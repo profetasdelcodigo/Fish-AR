@@ -1,0 +1,7 @@
+{
+  "name": "PescActívate AR",
+  "description": "Exploración marina AR estilo FNAF AR y Pokémon en las costas de Piura y la feria escolar Sabores del Mar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

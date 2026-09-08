@@ -1,0 +1,131 @@
+package com.example.util
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+data class RealLocationData(
+  val latitude: Double,
+  val longitude: Double,
+  val accuracyMeters: Float = 5f,
+  val isRealGps: Boolean = false
+)
+
+class LocationAndOrientationHelper(private val context: Context) : SensorEventListener, LocationListener {
+
+  private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+  private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+
+  // Orientation flows in degrees
+  private val _deviceHeading = MutableStateFlow(0f)
+  val deviceHeading: StateFlow<Float> = _deviceHeading.asStateFlow()
+
+  private val _devicePitch = MutableStateFlow(0f)
+  val devicePitch: StateFlow<Float> = _devicePitch.asStateFlow()
+
+  // Real location flow - defaults to Piura / San Josefina if real GPS not available
+  private val _currentLocation = MutableStateFlow(
+    RealLocationData(latitude = -5.1970, longitude = -80.6350, isRealGps = false)
+  )
+  val currentLocation: StateFlow<RealLocationData> = _currentLocation.asStateFlow()
+
+  private val rotationMatrix = FloatArray(9)
+  private val orientationAngles = FloatArray(3)
+  private var rotationSensor: Sensor? = null
+  private var isSensorRunning = false
+
+  init {
+    rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+      ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ORIENTATION)
+  }
+
+  fun startTrackingOrientation(onOrientationChanged: (Float, Float) -> Unit) {
+    if (isSensorRunning) return
+    rotationSensor?.let { sensor ->
+      sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+      isSensorRunning = true
+    }
+  }
+
+  fun stopTrackingOrientation() {
+    if (!isSensorRunning) return
+    sensorManager?.unregisterListener(this)
+    isSensorRunning = false
+  }
+
+  @SuppressLint("MissingPermission")
+  fun requestRealLocationUpdate() {
+    try {
+      val lm = locationManager ?: return
+      val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+      for (provider in providers) {
+        if (lm.isProviderEnabled(provider)) {
+          val lastLoc = lm.getLastKnownLocation(provider)
+          if (lastLoc != null) {
+            updateFromLocation(lastLoc)
+          }
+          lm.requestLocationUpdates(provider, 3000L, 2f, this)
+        }
+      }
+    } catch (_: SecurityException) {
+      // Gracefully fallback to default coordinates
+    }
+  }
+
+  fun stopLocationUpdates() {
+    try {
+      locationManager?.removeUpdates(this)
+    } catch (_: Exception) {}
+  }
+
+  private fun updateFromLocation(loc: Location) {
+    _currentLocation.value = RealLocationData(
+      latitude = loc.latitude,
+      longitude = loc.longitude,
+      accuracyMeters = loc.accuracy,
+      isRealGps = true
+    )
+  }
+
+  override fun onSensorChanged(event: SensorEvent?) {
+    if (event == null) return
+    if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+      SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+      SensorManager.getOrientation(rotationMatrix, orientationAngles)
+
+      // Azimuth (heading) in degrees [0, 360)
+      val azimuthDeg = ((Math.toDegrees(orientationAngles[0].toDouble()) + 360) % 360).toFloat()
+      // Pitch in degrees [-90, 90]
+      val pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+
+      _deviceHeading.value = azimuthDeg
+      _devicePitch.value = pitchDeg
+    } else if (event.sensor.type == Sensor.TYPE_ORIENTATION) {
+      val azimuth = (event.values[0] + 360f) % 360f
+      val pitch = event.values[1]
+      _deviceHeading.value = azimuth
+      _devicePitch.value = pitch
+    }
+  }
+
+  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+  override fun onLocationChanged(location: Location) {
+    updateFromLocation(location)
+  }
+
+  @Deprecated("Deprecated in Java")
+  override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+  override fun onProviderEnabled(provider: String) {}
+  override fun onProviderDisabled(provider: String) {}
+}
