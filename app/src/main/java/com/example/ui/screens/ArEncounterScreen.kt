@@ -23,10 +23,12 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Healing
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
@@ -40,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.example.game.ArGameState
 import com.example.game.EncounterPhase
 import com.example.game.MarineGameViewModel
+import com.example.ui.components.ArMaritimeGoogleMapsOverlay
 import com.example.ui.components.MagneticReelMeter
 import com.example.ui.components.UnderwaterViewport3D
 import com.example.ui.theme.MarineCyan
@@ -77,6 +81,10 @@ fun ArEncounterScreen(
 ) {
   // Rear camera feed enabled by default for true AR experience
   var useCameraFeed by remember { mutableStateOf(true) }
+  var isMapOverlayVisible by remember { mutableStateOf(false) }
+  var isMapOverlayExpanded by remember { mutableStateOf(false) }
+
+  val realLocation by viewModel.realLocation.collectAsState()
 
   Box(
     modifier = modifier
@@ -140,22 +148,45 @@ fun ArEncounterScreen(
           )
         }
 
-        // Camera Feed Toggle (Live Rear Camera / Abyssal 3D)
-        IconButton(
-          onClick = { useCameraFeed = !useCameraFeed },
-          modifier = Modifier
-            .size(42.dp)
-            .clip(CircleShape)
-            .background(OceanAbyss.copy(alpha = 0.88f))
-            .border(1.5.dp, if (useCameraFeed) MarineGreen else MarineCyan, CircleShape)
-            .testTag("toggle_camera_mode_button")
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically
         ) {
-          Icon(
-            imageVector = Icons.Default.CameraAlt,
-            contentDescription = "Alternar Cámara Trasera",
-            tint = if (useCameraFeed) MarineGreen else MarineCyan,
-            modifier = Modifier.size(20.dp)
-          )
+          // Maritime Google Maps Overlay Toggle Button
+          IconButton(
+            onClick = { isMapOverlayVisible = !isMapOverlayVisible },
+            modifier = Modifier
+              .size(42.dp)
+              .clip(CircleShape)
+              .background(OceanAbyss.copy(alpha = 0.88f))
+              .border(1.5.dp, if (isMapOverlayVisible) MarineGold else MarineCyan, CircleShape)
+              .testTag("toggle_maritime_map_overlay_button")
+          ) {
+            Icon(
+              imageVector = Icons.Default.Map,
+              contentDescription = "Alternar Capa de Mapa Marítimo",
+              tint = if (isMapOverlayVisible) MarineGold else MarineCyan,
+              modifier = Modifier.size(20.dp)
+            )
+          }
+
+          // Camera Feed Toggle (Live Rear Camera / Abyssal 3D)
+          IconButton(
+            onClick = { useCameraFeed = !useCameraFeed },
+            modifier = Modifier
+              .size(42.dp)
+              .clip(CircleShape)
+              .background(OceanAbyss.copy(alpha = 0.88f))
+              .border(1.5.dp, if (useCameraFeed) MarineGreen else MarineCyan, CircleShape)
+              .testTag("toggle_camera_mode_button")
+          ) {
+            Icon(
+              imageVector = Icons.Default.CameraAlt,
+              contentDescription = "Alternar Cámara Trasera",
+              tint = if (useCameraFeed) MarineGreen else MarineCyan,
+              modifier = Modifier.size(20.dp)
+            )
+          }
         }
       }
 
@@ -216,6 +247,34 @@ fun ArEncounterScreen(
             fontSize = 11.sp
           )
         }
+      }
+    }
+
+    // 2.1. Maritime Google Maps Real-Time GPS Overlay
+    if (isMapOverlayVisible) {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(
+            top = if (isMapOverlayExpanded) 110.dp else 125.dp,
+            end = 14.dp,
+            start = if (isMapOverlayExpanded) 14.dp else 0.dp
+          ),
+        contentAlignment = if (isMapOverlayExpanded) Alignment.TopCenter else Alignment.TopEnd
+      ) {
+        ArMaritimeGoogleMapsOverlay(
+          userLocation = realLocation,
+          playerHeading = gameState.playerHeading,
+          creatureHeading = gameState.creatureHeading,
+          creatureDistanceMeters = gameState.creatureDistance,
+          currentSpecies = gameState.currentSpecies,
+          isExpanded = isMapOverlayExpanded,
+          onToggleExpand = { isMapOverlayExpanded = !isMapOverlayExpanded },
+          onClose = {
+            isMapOverlayVisible = false
+            isMapOverlayExpanded = false
+          }
+        )
       }
     }
 

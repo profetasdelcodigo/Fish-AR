@@ -116,10 +116,12 @@ fun WelcomeHeroScreen(
         contentAlignment = Alignment.Center
       ) {
         Image(
-          painter = painterResource(id = R.drawable.img_real_super_pez_3d),
-          contentDescription = "Logo Fish AR",
-          contentScale = ContentScale.Fit,
-          modifier = Modifier.size(76.dp)
+          painter = painterResource(id = R.drawable.img_fish_ar_logo),
+          contentDescription = "Logo Oficial Fish AR",
+          contentScale = ContentScale.Crop,
+          modifier = Modifier
+            .size(86.dp)
+            .clip(CircleShape)
         )
       }
 

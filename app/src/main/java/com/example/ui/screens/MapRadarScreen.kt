@@ -133,8 +133,9 @@ fun MapRadarScreen(
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
           Image(
-            painter = painterResource(id = R.drawable.img_real_super_pez_3d),
-            contentDescription = "PescActívate Logo",
+            painter = painterResource(id = R.drawable.img_fish_ar_logo),
+            contentDescription = "Fish AR Logo",
+            contentScale = ContentScale.Crop,
             modifier = Modifier
               .size(36.dp)
               .clip(CircleShape)
