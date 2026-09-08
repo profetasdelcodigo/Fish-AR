@@ -274,7 +274,6 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       // This keeps the high-pressure shock as the first step and adds a
       // Pokémon-like skill layer before the fish is actually registered.
       MarineSoundEngine.playSuccessChime()
-      val caught = state.currentSpecies
       _gameState.update {
         it?.copy(
           phase = EncounterPhase.Reeling(progress = 0.10f, targetZone = 0.35f..0.65f),
@@ -559,6 +558,26 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
                   chargeTimerProgress = timerProgress,
                   creatureBehavior = CreatureBehavior.CHARGING_FAST
                 )
+              }
+            }
+          }
+
+          is EncounterPhase.Reeling -> {
+            // Pokémon-like capture tension: the magnetic field slowly decays,
+            // so the player must actively stabilize it instead of tapping once.
+            val decayedProgress = (currentPhase.progress - 0.025f).coerceAtLeast(0f)
+            if (decayedProgress <= 0f) {
+              MarineSoundEngine.playJumpscareSplash()
+              _gameState.update {
+                it?.copy(
+                  phase = EncounterPhase.Splashed("¡El pez rompió el campo magnético y escapó a las profundidades!"),
+                  creatureBehavior = CreatureBehavior.FEINT_DISSOLVE
+                )
+              }
+              break
+            } else {
+              _gameState.update {
+                it?.copy(phase = currentPhase.copy(progress = decayedProgress))
               }
             }
           }
