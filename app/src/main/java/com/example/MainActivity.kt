@@ -23,8 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Backpack
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Tune
@@ -36,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -56,7 +57,8 @@ enum class MainScreenNavigation(val label: String, val icon: ImageVector) {
   MISIONES("Misiones", Icons.Default.Assignment),
   ECOSISTEMAS("Ecosistemas", Icons.Default.Waves),
   MINIGAMES("Feria", Icons.Default.Public),
-  LABORATORIO("Laboratorio", Icons.Default.Tune)
+  LABORATORIO("Laboratorio", Icons.Default.Tune),
+  MORE("Más", Icons.Default.MoreHoriz)
 }
 
 class MainActivity : ComponentActivity() {
@@ -73,6 +75,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
   var isWelcomeCompleted by remember { mutableStateOf(false) }
   var currentNavScreen by remember { mutableStateOf(MainScreenNavigation.MAPA) }
   var showFairInfo by remember { mutableStateOf(false) }
+  var isNightMode by remember { mutableStateOf(false) }
   val context = LocalContext.current
 
   val permissionsLauncher = rememberLauncherForActivityResult(
@@ -110,6 +113,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
                   MainScreenNavigation.ECOSISTEMAS -> EcosystemsScreen(viewModel, modifier = Modifier.fillMaxSize())
                   MainScreenNavigation.MINIGAMES -> FairMiniGamesScreen(viewModel, onBackToRadar = { currentNavScreen = MainScreenNavigation.MAPA }, modifier = Modifier.fillMaxSize())
                   MainScreenNavigation.LABORATORIO -> EquipmentLabScreen(viewModel, modifier = Modifier.fillMaxSize())
+                  MainScreenNavigation.MORE -> MoreFeaturesScreen(viewModel, isNightMode, onToggleNightMode = { isNightMode = !isNightMode }, modifier = Modifier.fillMaxSize())
                 }
               }
             }
@@ -130,6 +134,34 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
                   Text(tab.label, color = if (selected) MarineCyan else TextSecondary, fontWeight = if (selected) FontWeight.Black else FontWeight.Normal, fontSize = 10.sp)
                 }
               }
+            }
+
+            if (currentNavScreen != MainScreenNavigation.MORE) {
+              Row(
+                modifier = Modifier
+                  .align(Alignment.TopEnd)
+                  .padding(top = 12.dp, end = 12.dp)
+                  .clip(RoundedCornerShape(18.dp))
+                  .background(OceanAbyss.copy(alpha = .94f))
+                  .border(1.dp, MarineCyan.copy(alpha = .4f), RoundedCornerShape(18.dp))
+                  .clickable { MarineSoundEngine.playNavClick(); currentNavScreen = MainScreenNavigation.MORE }
+                  .padding(horizontal = 10.dp, vertical = 7.dp)
+                  .testTag("open_more_features"),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.MoreHoriz, contentDescription = "Más funciones", tint = MarineCyan, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Más", color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 10.sp)
+              }
+            }
+
+            if (isNightMode) {
+              Box(
+                Modifier
+                  .fillMaxSize()
+                  .background(Color.Black.copy(alpha = .14f))
+                  .testTag("night_mode_overlay")
+              )
             }
           }
         }
