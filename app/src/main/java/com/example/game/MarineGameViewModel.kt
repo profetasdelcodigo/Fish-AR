@@ -270,15 +270,17 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     val isAimed = angleDiff < 42f
 
     if (phase is EncounterPhase.RealCharge && state.creatureDistance <= 15f && isAimed) {
-      // Successful FNAF AR shock & capture!
+      // Successful FNAF AR shock now opens a short capture/reel phase.
+      // This keeps the high-pressure shock as the first step and adds a
+      // Pokémon-like skill layer before the fish is actually registered.
       MarineSoundEngine.playSuccessChime()
       val caught = state.currentSpecies
-      _unlockedSpeciesIds.update { it + caught.id }
-      _pescacoins.update { it + caught.energyRequired * 2 }
       _gameState.update {
         it?.copy(
-          phase = EncounterPhase.Success(caught),
-          creatureBehavior = CreatureBehavior.ELECTROCUTED
+          phase = EncounterPhase.Reeling(progress = 0.10f, targetZone = 0.35f..0.65f),
+          creatureBehavior = CreatureBehavior.ELECTROCUTED,
+          creatureDistance = 10f,
+          isFlashlightOn = false
         )
       }
     } else if (phase is EncounterPhase.FakeCharge) {
@@ -573,7 +575,12 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
         delay(1000)
         _gameState.update { state ->
           if (state == null) null
-          else {
+          else if (state.phase is EncounterPhase.Reeling || state.phase is EncounterPhase.Success || state.phase is EncounterPhase.Splashed) {
+            // Freeze expedition resources during the capture result screen so
+            // the player is rewarded for the skill sequence rather than
+            // losing battery while reading the outcome.
+            state
+          } else {
             val drain = if (state.isFlashlightOn) 2 else 1
             val newBat = max(0, state.batteryPercent - drain)
             val updatedFlashlight = if (newBat == 0) false else state.isFlashlightOn
@@ -691,4 +698,3 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     MarineSoundEngine.stopStaticLoop()
   }
 }
-
