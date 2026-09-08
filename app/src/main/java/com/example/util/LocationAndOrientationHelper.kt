@@ -26,14 +26,12 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
   private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
   private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
 
-  // Orientation flows in degrees
   private val _deviceHeading = MutableStateFlow(0f)
   val deviceHeading: StateFlow<Float> = _deviceHeading.asStateFlow()
 
   private val _devicePitch = MutableStateFlow(0f)
   val devicePitch: StateFlow<Float> = _devicePitch.asStateFlow()
 
-  // Real location flow - defaults to Piura / San Josefina if real GPS not available
   private val _currentLocation = MutableStateFlow(
     RealLocationData(latitude = -5.1970, longitude = -80.6350, isRealGps = false)
   )
@@ -43,6 +41,7 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
   private val orientationAngles = FloatArray(3)
   private var rotationSensor: Sensor? = null
   private var isSensorRunning = false
+  private var orientationCallback: ((Float, Float) -> Unit)? = null
 
   init {
     rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -50,6 +49,7 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
   }
 
   fun startTrackingOrientation(onOrientationChanged: (Float, Float) -> Unit) {
+    orientationCallback = onOrientationChanged
     if (isSensorRunning) return
     rotationSensor?.let { sensor ->
       sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
@@ -58,9 +58,11 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
   }
 
   fun stopTrackingOrientation() {
-    if (!isSensorRunning) return
-    sensorManager?.unregisterListener(this)
-    isSensorRunning = false
+    if (isSensorRunning) {
+      sensorManager?.unregisterListener(this)
+      isSensorRunning = false
+    }
+    orientationCallback = null
   }
 
   @SuppressLint("MissingPermission")
@@ -71,14 +73,12 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
       for (provider in providers) {
         if (lm.isProviderEnabled(provider)) {
           val lastLoc = lm.getLastKnownLocation(provider)
-          if (lastLoc != null) {
-            updateFromLocation(lastLoc)
-          }
+          if (lastLoc != null) updateFromLocation(lastLoc)
           lm.requestLocationUpdates(provider, 3000L, 2f, this)
         }
       }
     } catch (_: SecurityException) {
-      // Gracefully fallback to default coordinates
+      // Graceful fallback to the last known/default location.
     }
   }
 
@@ -97,24 +97,27 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
     )
   }
 
+  private fun publishOrientation(heading: Float, pitch: Float) {
+    _deviceHeading.value = heading
+    _devicePitch.value = pitch
+    orientationCallback?.invoke(heading, pitch)
+  }
+
   override fun onSensorChanged(event: SensorEvent?) {
     if (event == null) return
-    if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
-      SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-      SensorManager.getOrientation(rotationMatrix, orientationAngles)
-
-      // Azimuth (heading) in degrees [0, 360)
-      val azimuthDeg = ((Math.toDegrees(orientationAngles[0].toDouble()) + 360) % 360).toFloat()
-      // Pitch in degrees [-90, 90]
-      val pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
-
-      _deviceHeading.value = azimuthDeg
-      _devicePitch.value = pitchDeg
-    } else if (event.sensor.type == Sensor.TYPE_ORIENTATION) {
-      val azimuth = (event.values[0] + 360f) % 360f
-      val pitch = event.values[1]
-      _deviceHeading.value = azimuth
-      _devicePitch.value = pitch
+    when (event.sensor.type) {
+      Sensor.TYPE_ROTATION_VECTOR -> {
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+        SensorManager.getOrientation(rotationMatrix, orientationAngles)
+        val azimuthDeg = ((Math.toDegrees(orientationAngles[0].toDouble()) + 360) % 360).toFloat()
+        val pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+        publishOrientation(azimuthDeg, pitchDeg)
+      }
+      Sensor.TYPE_ORIENTATION -> {
+        val azimuth = (event.values[0] + 360f) % 360f
+        val pitch = event.values[1]
+        publishOrientation(azimuth, pitch)
+      }
     }
   }
 
