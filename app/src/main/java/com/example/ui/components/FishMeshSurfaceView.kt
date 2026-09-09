@@ -27,14 +27,19 @@ class FishMeshSurfaceView(context: Context) : GLSurfaceView(context) {
     renderMode = RENDERMODE_CONTINUOUSLY
   }
 
-  fun setSpecies(speciesId: String) { renderer.setSpecies(speciesId) }
+  /** Species changes are queued onto the OpenGL thread. */
+  fun setSpecies(speciesId: String) {
+    queueEvent { renderer.setSpecies(speciesId) }
+  }
 
   fun setMotion(swim: Float, yaw: Float, pitch: Float, scale: Float, behavior: String = "SWIMMING_IDLE") =
     renderer.setMotion(swim, yaw, pitch, scale, behavior)
 }
 
 private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Renderer {
-  private var speciesId = "bonito"
+  // Empty until the first species is explicitly selected. This guarantees that
+  // even bonito loads correctly on the first AndroidView update.
+  private var speciesId = ""
   private var vertices = FloatArray(0)
   private var normals = FloatArray(0)
   private var vertexBuffer: FloatBuffer? = null
@@ -54,10 +59,9 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
   private val mvp = FloatArray(16)
 
   fun setSpecies(id: String) {
-    if (speciesId != id) {
-      speciesId = id
-      loadMesh()
-    }
+    if (speciesId == id && count > 0) return
+    speciesId = id
+    loadMesh()
   }
 
   fun setMotion(swim: Float, yaw: Float, pitch: Float, scale: Float, behavior: String) {
@@ -86,16 +90,23 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
         float phase = uTime * 6.2831853;
         float lengthCoord = clamp((p.x + 1.0) * 0.5, 0.0, 1.0);
         float tailWeight = smoothstep(0.12, 0.95, 1.0 - lengthCoord);
+
+        // Base swimming: tail follows the body instead of translating a flat image.
         p.y += sin(phase * 1.35 + p.x * 7.0) * 0.075 * tailWeight;
         p.z += cos(phase * 1.35 + p.x * 6.0) * 0.035 * tailWeight;
+
+        // Frenzy: much faster and less predictable tail/body movement.
         if (uBehavior > 3.5 && uBehavior < 4.5) {
           p.y += sin(phase * 7.0 + p.x * 13.0) * 0.10 * tailWeight;
           p.z += cos(phase * 9.0 + p.y * 11.0) * 0.07;
         }
+
+        // Shock: rapid electrical twitch.
         if (uBehavior > 6.5) {
           p.y += sin(phase * 16.0 + p.x * 10.0) * 0.045;
           p.z += cos(phase * 13.0 + p.x * 8.0) * 0.035;
         }
+
         gl_Position = uMvp * vec4(p, 1.0);
         vNormal = aNormal;
         vDepth = clamp((p.y + 0.8) * 0.55, 0.0, 1.0);
@@ -123,6 +134,9 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
     """.trimIndent()
 
     program = linkProgram(vs, fs)
+    // If AndroidView has not sent a species yet, use the first catalog entry as
+    // a safe visual fallback. A later setSpecies() will replace it on the GL thread.
+    if (speciesId.isEmpty()) speciesId = "bonito"
     loadMesh()
     Matrix.setLookAtM(view, 0, 0f, 0.15f, 3.2f, 0f, 0f, 0f, 0f, 1f, 0f)
   }
@@ -159,6 +173,7 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
         Matrix.rotateM(model, 0, sin(t * 35f) * 16f, 0f, 0f, 1f)
       }
       "CHARGING_FAST" -> {
+        // Face the player and surge forward in short attack pulses.
         currentYaw += 90f
         z = 0.65f + (1f - (0.5f + 0.5f * wave)) * 0.42f
         extraScale = 1f + 0.055f * kotlin.math.abs(fastWave)
