@@ -14,13 +14,7 @@ import kotlin.math.sin
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
-/**
- * Real-time fish mesh renderer used by Fish AR encounters.
- *
- * It deliberately stays dependency-free, but performs actual vertex deformation
- * in the GPU so the fish visibly swims, turns toward the player, charges, enters
- * frenzy and reacts to an electric shock instead of behaving like a static PNG.
- */
+/** Real-time fish mesh renderer with GPU swimming, frenzy, charge and shock motion. */
 class FishMeshSurfaceView(context: Context) : GLSurfaceView(context) {
   private val renderer = FishMeshRenderer(context)
 
@@ -35,13 +29,8 @@ class FishMeshSurfaceView(context: Context) : GLSurfaceView(context) {
 
   fun setSpecies(speciesId: String) { renderer.setSpecies(speciesId) }
 
-  fun setMotion(
-    swim: Float,
-    yaw: Float,
-    pitch: Float,
-    scale: Float,
-    behavior: String = "SWIMMING_IDLE"
-  ) = renderer.setMotion(swim, yaw, pitch, scale, behavior)
+  fun setMotion(swim: Float, yaw: Float, pitch: Float, scale: Float, behavior: String = "SWIMMING_IDLE") =
+    renderer.setMotion(swim, yaw, pitch, scale, behavior)
 }
 
 private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Renderer {
@@ -92,30 +81,21 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
       uniform float uBehavior;
       varying vec3 vNormal;
       varying float vDepth;
-
       void main() {
         vec3 p = aPosition;
         float phase = uTime * 6.2831853;
         float lengthCoord = clamp((p.x + 1.0) * 0.5, 0.0, 1.0);
         float tailWeight = smoothstep(0.12, 0.95, 1.0 - lengthCoord);
-
-        // Natural body/tail undulation. Tail moves more than the head.
-        float swimWave = sin(phase * 1.35 + p.x * 7.0) * 0.075 * tailWeight;
-        p.y += swimWave;
+        p.y += sin(phase * 1.35 + p.x * 7.0) * 0.075 * tailWeight;
         p.z += cos(phase * 1.35 + p.x * 6.0) * 0.035 * tailWeight;
-
-        // Frenzy / haywire: fast irregular whole-body motion plus stronger tail whip.
         if (uBehavior > 3.5 && uBehavior < 4.5) {
           p.y += sin(phase * 7.0 + p.x * 13.0) * 0.10 * tailWeight;
           p.z += cos(phase * 9.0 + p.y * 11.0) * 0.07;
         }
-
-        // Electrocution: rapid twitch through the body.
         if (uBehavior > 6.5) {
           p.y += sin(phase * 16.0 + p.x * 10.0) * 0.045;
           p.z += cos(phase * 13.0 + p.x * 8.0) * 0.035;
         }
-
         gl_Position = uMvp * vec4(p, 1.0);
         vNormal = aNormal;
         vDepth = clamp((p.y + 0.8) * 0.55, 0.0, 1.0);
@@ -127,22 +107,17 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
       varying vec3 vNormal;
       varying float vDepth;
       uniform float uBehavior;
-
       void main() {
         vec3 N = normalize(vNormal);
         vec3 L = normalize(vec3(-0.35, 0.75, 0.65));
         float diffuse = max(dot(N, L), 0.0);
         float rim = pow(1.0 - max(dot(N, vec3(0.0, 0.0, 1.0)), 0.0), 2.2);
-
         vec3 deep = vec3(0.025, 0.075, 0.095);
         vec3 silver = vec3(0.42, 0.62, 0.67);
         vec3 body = mix(deep, silver, clamp(vDepth * 0.75 + diffuse * 0.65, 0.0, 1.0));
         body += vec3(0.15, 0.32, 0.36) * rim;
-
-        // Red threat lighting during frenzy/charge, cyan electrical response when stunned.
         if (uBehavior > 3.5 && uBehavior < 6.5) body += vec3(0.28, 0.025, 0.015);
         if (uBehavior > 6.5) body += vec3(0.05, 0.28, 0.34);
-
         gl_FragColor = vec4(body, 0.96);
       }
     """.trimIndent()
@@ -162,7 +137,7 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
     if (vertexBuffer == null || normalBuffer == null || count == 0) return
 
     GLES20.glEnable(GLES20.GL_DEPTH_TEST)
-    val t = swim * 1.0f
+    val t = swim
     val wave = sin(t * 6.2831853f)
     val fastWave = sin(t * 18.0f)
 
@@ -170,14 +145,13 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
     var currentYaw = yaw + wave * 4f
     var currentPitch = pitch
     var z = 0f
-    var x = 0f
     var extraScale = 1f
 
     when (behavior) {
       "STALKING_CIRCLING" -> currentYaw += sin(t * 6.2831853f) * 18f
       "AMBUSH_PREPARE" -> {
         currentPitch += sin(t * 18f) * 2.5f
-        extraScale = 1f + abs(sin(t * 9f)) * 0.025f
+        extraScale = 1f + kotlin.math.abs(sin(t * 9f)) * 0.025f
       }
       "FRENZY_HAYWIRE" -> {
         currentYaw += sin(t * 31f) * 22f
@@ -185,10 +159,9 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
         Matrix.rotateM(model, 0, sin(t * 35f) * 16f, 0f, 0f, 1f)
       }
       "CHARGING_FAST" -> {
-        // Fish rotates to face the camera, surges toward it and pulses in scale.
         currentYaw += 90f
         z = 0.65f + (1f - (0.5f + 0.5f * wave)) * 0.42f
-        extraScale = 1f + 0.055f * abs(fastWave)
+        extraScale = 1f + 0.055f * kotlin.math.abs(fastWave)
       }
       "FEINT_DISSOLVE" -> {
         currentYaw += 90f + sin(t * 8f) * 10f
@@ -200,7 +173,7 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
       }
     }
 
-    Matrix.translateM(model, 0, x, 0f, z)
+    Matrix.translateM(model, 0, 0f, 0f, z)
     Matrix.rotateM(model, 0, currentPitch, 1f, 0f, 0f)
     Matrix.rotateM(model, 0, currentYaw, 0f, 1f, 0f)
     Matrix.scaleM(model, 0, scale * extraScale, scale * extraScale, scale * extraScale)
@@ -245,9 +218,7 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
       raw.forEach { line ->
         val p = line.trim().split(" ").filter { it.isNotBlank() }
         if (p.isEmpty()) return@forEach
-        if (p[0] == "v" && p.size >= 4) {
-          positions += floatArrayOf(p[1].toFloat(), p[2].toFloat(), p[3].toFloat())
-        }
+        if (p[0] == "v" && p.size >= 4) positions += floatArrayOf(p[1].toFloat(), p[2].toFloat(), p[3].toFloat())
         if (p[0] == "f" && p.size >= 4) {
           val ids = p.drop(1).mapNotNull { it.substringBefore('/').toIntOrNull()?.minus(1) }
           for (i in 1 until ids.size - 1) {
@@ -255,9 +226,7 @@ private class FishMeshRenderer(private val context: Context) : GLSurfaceView.Ren
             val b = positions.getOrNull(ids[i])
             val c = positions.getOrNull(ids[i + 1])
             if (a != null && b != null && c != null) {
-              trianglePositions += a
-              trianglePositions += b
-              trianglePositions += c
+              trianglePositions += a; trianglePositions += b; trianglePositions += c
             }
           }
         }
