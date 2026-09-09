@@ -42,6 +42,13 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
+/**
+ * Encounter creature renderer.
+ *
+ * The OpenGL mesh is now the primary creature. The species illustration is only
+ * retained as a very subtle visual fallback/detail layer; it no longer fakes the
+ * fish as the main 3D object.
+ */
 @Composable
 fun RealisticFish3DRenderer(
   species: FishSpecies,
@@ -63,23 +70,23 @@ fun RealisticFish3DRenderer(
   val pitch3D = when (behavior) {
     CreatureBehavior.CHARGING_FAST -> 12f + undulation * 3f
     CreatureBehavior.AMBUSH_PREPARE -> -5f + sin(swimPhase * 3f) * 2f
-    CreatureBehavior.FRENZY_HAYWIRE -> Random.nextFloat() * 20f - 10f
-    CreatureBehavior.ELECTROCUTED -> Random.nextFloat() * 24f - 12f
+    CreatureBehavior.FRENZY_HAYWIRE -> sin(swimPhase * 7f) * 12f
+    CreatureBehavior.ELECTROCUTED -> sin(swimPhase * 15f) * 18f
     else -> undulation * 7f
   }
   val yaw3D = when (behavior) {
     CreatureBehavior.CHARGING_FAST -> lateralSway * 4f
     CreatureBehavior.STALKING_CIRCLING -> 22f + lateralSway * 8f
     CreatureBehavior.AMBUSH_PREPARE -> lateralSway * 3f
-    CreatureBehavior.FRENZY_HAYWIRE -> Random.nextFloat() * 32f - 16f
-    CreatureBehavior.ELECTROCUTED -> Random.nextFloat() * 20f - 10f
+    CreatureBehavior.FRENZY_HAYWIRE -> cos(swimPhase * 11f) * 24f
+    CreatureBehavior.ELECTROCUTED -> sin(swimPhase * 13f) * 15f
     else -> lateralSway * 12f
   }
   val roll3D = when (behavior) {
     CreatureBehavior.CHARGING_FAST -> undulation * 4f
     CreatureBehavior.STALKING_CIRCLING -> 14f + undulation * 5f
-    CreatureBehavior.FRENZY_HAYWIRE -> Random.nextFloat() * 18f - 9f
-    CreatureBehavior.ELECTROCUTED -> Random.nextFloat() * 30f - 15f
+    CreatureBehavior.FRENZY_HAYWIRE -> sin(swimPhase * 9f) * 18f
+    CreatureBehavior.ELECTROCUTED -> cos(swimPhase * 14f) * 28f
     else -> undulation * 9f
   }
 
@@ -104,43 +111,78 @@ fun RealisticFish3DRenderer(
   val nativeModel = FishModelCatalog.forSpecies(species.id)
 
   Box(
-    modifier = modifier.size(baseBoxSize).offset { IntOffset(haywireJitterX.roundToInt(), haywireJitterY.roundToInt()) }.graphicsLayer {
-      rotationX = pitch3D
-      rotationY = yaw3D
-      rotationZ = roll3D
-      scaleX = chargeSurgeAnim.value
-      scaleY = chargeSurgeAnim.value
-      cameraDistance = 16f * density
-    }
+    modifier = modifier
+      .size(baseBoxSize)
+      .offset { IntOffset(haywireJitterX.roundToInt(), haywireJitterY.roundToInt()) }
+      .graphicsLayer {
+        rotationX = pitch3D
+        rotationY = yaw3D
+        rotationZ = roll3D
+        scaleX = chargeSurgeAnim.value
+        scaleY = chargeSurgeAnim.value
+        cameraDistance = 16f * density
+      }
   ) {
+    // The illustration remains only as a faint texture/detail support so the
+    // 3D mesh remains visually dominant.
+    Image(
+      painter = painterResource(species.imageRes),
+      contentDescription = species.commonName,
+      contentScale = ContentScale.Fit,
+      modifier = Modifier.fillMaxSize().alpha(
+        when {
+          behavior == CreatureBehavior.FEINT_DISSOLVE -> .08f
+          isHaywireActive -> .14f
+          else -> .10f
+        }
+      )
+    )
+
     if (isHaywireActive) {
-      Image(painter = painterResource(species.imageRes), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().offset(x = (-12).dp, y = 3.dp).alpha(.65f), colorFilter = ColorFilter.tint(Color(0xFFFF1744), BlendMode.Screen))
-      Image(painter = painterResource(species.imageRes), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().offset(x = 12.dp, y = (-3).dp).alpha(.65f), colorFilter = ColorFilter.tint(Color(0xFF00E5FF), BlendMode.Screen))
+      Image(painter = painterResource(species.imageRes), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().offset(x = (-10).dp, y = 3.dp).alpha(.18f), colorFilter = ColorFilter.tint(Color(0xFFFF1744), BlendMode.Screen))
+      Image(painter = painterResource(species.imageRes), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().offset(x = 10.dp, y = (-3).dp).alpha(.18f), colorFilter = ColorFilter.tint(Color(0xFF00E5FF), BlendMode.Screen))
     }
 
-    val creatureAlpha = when {
-      behavior == CreatureBehavior.FEINT_DISSOLVE -> .25f
-      isDecoyCharge -> .55f
-      behavior == CreatureBehavior.ELECTROCUTED -> .85f
-      else -> 1f
-    }
-    Image(painter = painterResource(species.imageRes), contentDescription = species.commonName, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().alpha(creatureAlpha))
-
-    // Native OpenGL ES mesh is rendered over the photorealistic species render.
-    // This gives encounters a real spatial mesh layer while retaining the high-detail species art.
     if (nativeModel != null) {
       val context = LocalContext.current
       AndroidView(
         factory = { FishMeshSurfaceView(context).apply { setSpecies(species.id) } },
-        update = { it.setMotion(swimCycle, yaw3D, pitch3D, nativeModel.scale) },
-        modifier = Modifier.fillMaxSize().alpha(if (isFlashlightOn) .30f else .18f)
+        update = {
+          it.setMotion(
+            swim = swimCycle,
+            yaw = yaw3D,
+            pitch = pitch3D,
+            scale = nativeModel.scale,
+            behavior = behavior.name
+          )
+        },
+        modifier = Modifier.fillMaxSize().alpha(if (isFlashlightOn) .98f else .94f)
       )
     }
 
-    Box(modifier = Modifier.fillMaxSize().clip(CircleShape).background(Brush.radialGradient(listOf(Color.Transparent, Color(0x00020B14), Color(0xFF021224).copy(alpha = depthHazeAlpha)))))
+    Box(
+      modifier = Modifier.fillMaxSize().clip(CircleShape).background(
+        Brush.radialGradient(
+          listOf(Color.Transparent, Color(0x00020B14), Color(0xFF021224).copy(alpha = depthHazeAlpha))
+        )
+      )
+    )
 
     if (isFlashlightOn && isAimedAt) {
-      Box(modifier = Modifier.size(baseBoxSize * .7f).clip(CircleShape).background(Brush.radialGradient(listOf(Color.White.copy(alpha = .45f * flashlightSpecular), MarineCyan.copy(alpha = .30f * flashlightSpecular), Color.Transparent))))
+      Box(
+        modifier = Modifier
+          .size(baseBoxSize * .7f)
+          .clip(CircleShape)
+          .background(
+            Brush.radialGradient(
+              listOf(
+                Color.White.copy(alpha = .45f * flashlightSpecular),
+                MarineCyan.copy(alpha = .30f * flashlightSpecular),
+                Color.Transparent
+              )
+            )
+          )
+      )
     }
 
     val eyeColor = when {
