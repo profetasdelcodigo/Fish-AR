@@ -45,15 +45,17 @@ fun CompetitiveEncounterOverlay(
   val running by tournamentViewModel.running.collectAsState()
   var registeredThisEncounter by remember { mutableStateOf(false) }
 
+  if (!running) return
+
   LaunchedEffect(gameState.phase) {
-    if (!registeredThisEncounter && gameState.phase is EncounterPhase.Success && running) {
-      tournamentViewModel.registerCapture(gameState.currentSpecies.displayName, basePoints = 100, clean = true)
+    if (!registeredThisEncounter && gameState.phase is EncounterPhase.Success) {
+      tournamentViewModel.registerCapture(gameState.currentSpecies.commonName, basePoints = 100, clean = true)
       registeredThisEncounter = true
     }
   }
 
-  LaunchedEffect(remaining, running) {
-    if (running && remaining <= 0) {
+  LaunchedEffect(remaining) {
+    if (remaining <= 0) {
       tournamentViewModel.finish()
       marineViewModel.endEncounter()
     }
