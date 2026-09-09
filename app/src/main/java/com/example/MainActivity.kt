@@ -35,7 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.audio.MarineSoundEngine
+import com.example.game.FairTournamentViewModel
 import com.example.game.MarineGameViewModel
 import com.example.ui.screens.*
 import com.example.ui.theme.*
@@ -70,7 +71,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
+fun PescActivateApp(
+  viewModel: MarineGameViewModel = viewModel(),
+  tournamentViewModel: FairTournamentViewModel = viewModel()
+) {
   val activeEncounterState by viewModel.gameState.collectAsState()
   var isWelcomeCompleted by remember { mutableStateOf(false) }
   var currentNavScreen by remember { mutableStateOf(MainScreenNavigation.MAPA) }
@@ -79,21 +83,29 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
   val context = LocalContext.current
 
   val permissionsLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.RequestMultiplePermissions(),
-    onResult = { }
+    contract = ActivityResultContracts.RequestMultiplePermissions(), onResult = { }
   )
 
   LaunchedEffect(Unit) {
     val neededPermissions = mutableListOf<String>()
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(Manifest.permission.CAMERA)
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+    listOf(
+      Manifest.permission.CAMERA,
+      Manifest.permission.ACCESS_FINE_LOCATION
+    ).forEach { permission ->
+      if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(permission)
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 31) {
+      listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN).forEach { permission ->
+        if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(permission)
+      }
+    }
     if (neededPermissions.isNotEmpty()) permissionsLauncher.launch(neededPermissions.toTypedArray())
   }
 
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
     Box(Modifier.fillMaxSize().padding(innerPadding)) {
       when {
-        activeEncounterState != null -> ArEncounterScreen(viewModel, activeEncounterState!!, Modifier.fillMaxSize())
+        activeEncounterState != null -> ArEncounterScreen(viewModel, activeEncounterState!!, tournamentViewModel, Modifier.fillMaxSize())
         !isWelcomeCompleted -> WelcomeHeroScreen(onStartClicked = { isWelcomeCompleted = true }, modifier = Modifier.fillMaxSize())
         else -> {
           Box(Modifier.fillMaxSize()) {
@@ -102,8 +114,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
                 targetState = currentNavScreen,
                 transitionSpec = {
                   (slideInHorizontally(animationSpec = tween(260)) { it / 4 } + fadeIn(tween(260))).togetherWith(slideOutHorizontally(tween(180)) { -it / 4 } + fadeOut(tween(180)))
-                },
-                label = "MainNavigationTransition"
+                }, label = "MainNavigationTransition"
               ) { targetScreen ->
                 when (targetScreen) {
                   MainScreenNavigation.MAPA -> MapRadarScreen(viewModel, onOpenPescadex = { MarineSoundEngine.playNavClick(); currentNavScreen = MainScreenNavigation.CATALOGO }, onOpenMiniGames = { MarineSoundEngine.playNavClick(); currentNavScreen = MainScreenNavigation.MINIGAMES }, onOpenFairDetails = { MarineSoundEngine.playNavClick(); showFairInfo = true }, modifier = Modifier.fillMaxSize())
@@ -111,7 +122,13 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
                   MainScreenNavigation.INVENTARIO -> InventoryScreen(viewModel, modifier = Modifier.fillMaxSize(), onOpenLab = { currentNavScreen = MainScreenNavigation.LABORATORIO })
                   MainScreenNavigation.MISIONES -> MissionsScreen(viewModel, modifier = Modifier.fillMaxSize())
                   MainScreenNavigation.ECOSISTEMAS -> EcosystemsScreen(viewModel, modifier = Modifier.fillMaxSize())
-                  MainScreenNavigation.MINIGAMES -> FairMiniGamesScreen(viewModel, onBackToRadar = { currentNavScreen = MainScreenNavigation.MAPA }, modifier = Modifier.fillMaxSize())
+                  MainScreenNavigation.MINIGAMES -> GameModesScreen(
+                    marineViewModel = viewModel,
+                    tournamentViewModel = tournamentViewModel,
+                    onBackToRadar = { currentNavScreen = MainScreenNavigation.MAPA },
+                    onStartEncounter = { viewModel.startEncounter(com.example.model.PiuraMarineDatabase.speciesList.random()) },
+                    modifier = Modifier.fillMaxSize()
+                  )
                   MainScreenNavigation.LABORATORIO -> EquipmentLabScreen(viewModel, modifier = Modifier.fillMaxSize())
                   MainScreenNavigation.MORE -> MoreFeaturesScreen(viewModel, isNightMode, onToggleNightMode = { isNightMode = !isNightMode }, modifier = Modifier.fillMaxSize())
                 }
@@ -126,8 +143,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
               listOf(MainScreenNavigation.MAPA, MainScreenNavigation.CATALOGO, MainScreenNavigation.INVENTARIO, MainScreenNavigation.MISIONES, MainScreenNavigation.ECOSISTEMAS).forEach { tab ->
                 val selected = currentNavScreen == tab
                 Column(
-                  modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { MarineSoundEngine.playNavClick(); currentNavScreen = tab }.padding(horizontal = 10.dp, vertical = 4.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally
+                  modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { MarineSoundEngine.playNavClick(); currentNavScreen = tab }.padding(horizontal = 10.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Icon(tab.icon, tab.label, tint = if (selected) MarineCyan else TextSecondary, modifier = Modifier.size(20.dp))
                   Spacer(Modifier.height(2.dp))
@@ -138,16 +154,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
 
             if (currentNavScreen != MainScreenNavigation.MORE) {
               Row(
-                modifier = Modifier
-                  .align(Alignment.TopEnd)
-                  .padding(top = 12.dp, end = 12.dp)
-                  .clip(RoundedCornerShape(18.dp))
-                  .background(OceanAbyss.copy(alpha = .94f))
-                  .border(1.dp, MarineCyan.copy(alpha = .4f), RoundedCornerShape(18.dp))
-                  .clickable { MarineSoundEngine.playNavClick(); currentNavScreen = MainScreenNavigation.MORE }
-                  .padding(horizontal = 10.dp, vertical = 7.dp)
-                  .testTag("open_more_features"),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 12.dp).clip(RoundedCornerShape(18.dp)).background(OceanAbyss.copy(alpha = .94f)).border(1.dp, MarineCyan.copy(alpha = .4f), RoundedCornerShape(18.dp)).clickable { MarineSoundEngine.playNavClick(); currentNavScreen = MainScreenNavigation.MORE }.padding(horizontal = 10.dp, vertical = 7.dp).testTag("open_more_features"), verticalAlignment = Alignment.CenterVertically
               ) {
                 Icon(Icons.Default.MoreHoriz, contentDescription = "Más funciones", tint = MarineCyan, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
@@ -155,14 +162,7 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
               }
             }
 
-            if (isNightMode) {
-              Box(
-                Modifier
-                  .fillMaxSize()
-                  .background(Color.Black.copy(alpha = .14f))
-                  .testTag("night_mode_overlay")
-              )
-            }
+            if (isNightMode) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .14f)).testTag("night_mode_overlay"))
           }
         }
       }
