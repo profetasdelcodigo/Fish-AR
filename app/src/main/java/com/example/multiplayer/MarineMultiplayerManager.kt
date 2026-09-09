@@ -39,8 +39,8 @@ class MarineMultiplayerManager(context: Context) {
     private val SERVICE_UUID: UUID = UUID.fromString("d4c2e4f4-76d6-4e1c-a6a0-9a2c6a7d2e41")
   }
 
+  @Suppress("DEPRECATION")
   private val adapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-  private val appContext = context.applicationContext
   private val scope = CoroutineScope(Dispatchers.IO)
   private var socket: BluetoothSocket? = null
   private var serverSocket: BluetoothServerSocket? = null
@@ -54,23 +54,39 @@ class MarineMultiplayerManager(context: Context) {
   val messages: StateFlow<MarinePeerMessage?> = _messages.asStateFlow()
 
   @SuppressLint("MissingPermission")
-  fun pairedDevices(): List<BluetoothDevice> = adapter?.bondedDevices?.toList()?.sortedBy { it.name ?: it.address } ?: emptyList()
+  fun pairedDevices(): List<BluetoothDevice> {
+    val bt = adapter ?: return emptyList()
+    return try {
+      bt.bondedDevices.toList().sortedBy { it.name ?: it.address }
+    } catch (_: SecurityException) {
+      _state.value = MarinePeerState.Error("Permiso de Bluetooth no concedido.")
+      emptyList()
+    }
+  }
 
   @SuppressLint("MissingPermission")
   fun startListening() {
     close()
     val bt = adapter ?: run { _state.value = MarinePeerState.Error("Este teléfono no tiene Bluetooth."); return }
+    if (!bt.isEnabled) {
+      _state.value = MarinePeerState.Error("Activa Bluetooth para recibir un rival.")
+      return
+    }
     scope.launch {
       try {
         serverSocket = bt.listenUsingRfcommWithServiceRecord("Fish AR", SERVICE_UUID)
         _state.value = MarinePeerState.Listening
         socket = serverSocket?.accept()
         serverSocket?.close()
+        serverSocket = null
         socket?.let { connected ->
           writer = PrintWriter(connected.outputStream, true)
           _state.value = MarinePeerState.Connected(connected.remoteDevice.name ?: "Jugador")
           readLoop(connected)
         }
+      } catch (e: SecurityException) {
+        _state.value = MarinePeerState.Error("Permiso de Bluetooth no concedido.")
+        closeSocketOnly()
       } catch (e: Exception) {
         if (_state.value !is MarinePeerState.Connected) _state.value = MarinePeerState.Error(e.message ?: "No se pudo abrir la conexión")
       }
@@ -79,6 +95,11 @@ class MarineMultiplayerManager(context: Context) {
 
   @SuppressLint("MissingPermission")
   fun connect(device: BluetoothDevice) {
+    val bt = adapter ?: run { _state.value = MarinePeerState.Error("Este teléfono no tiene Bluetooth."); return }
+    if (!bt.isEnabled) {
+      _state.value = MarinePeerState.Error("Activa Bluetooth para conectarte al rival.")
+      return
+    }
     close()
     _state.value = MarinePeerState.Connecting
     scope.launch {
@@ -89,6 +110,9 @@ class MarineMultiplayerManager(context: Context) {
         writer = PrintWriter(connected.outputStream, true)
         _state.value = MarinePeerState.Connected(device.name ?: device.address)
         readLoop(connected)
+      } catch (e: SecurityException) {
+        _state.value = MarinePeerState.Error("Permiso de Bluetooth no concedido.")
+        closeSocketOnly()
       } catch (e: Exception) {
         _state.value = MarinePeerState.Error(e.message ?: "No se pudo conectar")
         closeSocketOnly()
@@ -107,12 +131,12 @@ class MarineMultiplayerManager(context: Context) {
     send(MarinePeerMessage("PING", 1, "Fish AR"))
   }
 
-  private suspend fun readLoop(connected: BluetoothSocket) {
+  private fun readLoop(connected: BluetoothSocket) {
     val reader = BufferedReader(InputStreamReader(connected.inputStream))
     ioJob?.cancel()
     ioJob = scope.launch {
       try {
-        while (isActive && !Thread.currentThread().isInterrupted) {
+        while (isActive) {
           val line = reader.readLine() ?: break
           val parts = line.split('|', limit = 3)
           if (parts.isNotEmpty()) {
