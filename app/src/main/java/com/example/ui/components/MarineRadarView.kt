@@ -65,6 +65,12 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+import androidx.compose.ui.viewinterop.AndroidView
+import org.osmdroid.config.Configuration
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+
 @Composable
 fun MarineRadarView(
   zone: CoastalZone,
@@ -72,6 +78,7 @@ fun MarineRadarView(
   pingRadius: Float,
   isSatelliteMapMode: Boolean,
   selectedBeaconId: String?,
+  playerHeading: Float = 0f,
   onBeaconSelected: (MarineBeacon) -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -99,16 +106,6 @@ fun MarineRadarView(
     )
   }
 
-  LaunchedEffect(Unit) {
-    waveTideAnim.animateTo(
-      targetValue = 1f,
-      animationSpec = infiniteRepeatable(
-        animation = tween(durationMillis = 4000, easing = LinearEasing),
-        repeatMode = RepeatMode.Reverse
-      )
-    )
-  }
-
   BoxWithConstraints(
     modifier = modifier
       .background(if (isSatelliteMapMode) Color(0xFF061320) else OceanDeep)
@@ -120,108 +117,56 @@ fun MarineRadarView(
     val center = Offset(widthPx / 2f, heightPx / 2f)
     val maxRadius = minOf(widthPx, heightPx) / 2f * 0.88f
 
-    // 1. Full-Screen Google Maps / Nautical Cartography Layer
+    // 1. Real OSM Map Background Layer (Firmly Anchored to Zone Station)
+    AndroidView(
+      modifier = Modifier.fillMaxSize(),
+      factory = { context ->
+        Configuration.getInstance().userAgentValue = context.packageName
+        Configuration.getInstance().load(context, android.preference.PreferenceManager.getDefaultSharedPreferences(context))
+        MapView(context).apply {
+          setTileSource(TileSourceFactory.MAPNIK)
+          setMultiTouchControls(false) // Keep player position anchored to zone station
+          isClickable = false
+          controller.setZoom(15.0)
+          controller.setCenter(GeoPoint(zone.latitude, zone.longitude))
+          
+          if (isSatelliteMapMode) {
+            // High-contrast nautical radar styling
+            val colorMatrix = android.graphics.ColorMatrix().apply {
+              set(floatArrayOf(
+                0.90f, 0f, 0f, 0f, -10f,
+                0f, 0.95f, 0f, 0f, -5f,
+                0f, 0f, 1.10f, 0f, 15f,
+                0f, 0f, 0f, 1f, 0f
+              ))
+            }
+            overlayManager.tilesOverlay.setColorFilter(android.graphics.ColorMatrixColorFilter(colorMatrix))
+          } else {
+            overlayManager.tilesOverlay.setColorFilter(null)
+          }
+        }
+      },
+      update = { mapView ->
+        val targetCenter = GeoPoint(zone.latitude, zone.longitude)
+        mapView.controller.setCenter(targetCenter)
+        if (isSatelliteMapMode) {
+          val colorMatrix = android.graphics.ColorMatrix().apply {
+            set(floatArrayOf(
+              0.90f, 0f, 0f, 0f, -10f,
+              0f, 0.95f, 0f, 0f, -5f,
+              0f, 0f, 1.10f, 0f, 15f,
+              0f, 0f, 0f, 1f, 0f
+            ))
+          }
+          mapView.overlayManager.tilesOverlay.setColorFilter(android.graphics.ColorMatrixColorFilter(colorMatrix))
+        } else {
+          mapView.overlayManager.tilesOverlay.setColorFilter(null)
+        }
+      }
+    )
+
+    // 2. Radar UI Overlay (Grid, Sweep, Rings)
     Canvas(modifier = Modifier.fillMaxSize()) {
-      // Landmass & Coastline of Piura (Cabo Blanco, Paita, San Josefina)
-      val coastlinePath = Path().apply {
-        moveTo(0f, 0f)
-        lineTo(widthPx * 0.42f, 0f)
-        cubicTo(
-          widthPx * 0.46f, heightPx * 0.25f,
-          widthPx * 0.38f, heightPx * 0.52f,
-          widthPx * 0.54f, heightPx * 0.72f
-        )
-        cubicTo(
-          widthPx * 0.60f, heightPx * 0.85f,
-          widthPx * 0.48f, heightPx * 0.95f,
-          widthPx * 0.52f, heightPx
-        )
-        lineTo(0f, heightPx)
-        close()
-      }
-
-      if (isSatelliteMapMode) {
-        // Satellite Deep Ocean Gradient
-        drawRect(
-          brush = Brush.radialGradient(
-            colors = listOf(Color(0xFF0F2B48), Color(0xFF071728), Color(0xFF030D17)),
-            center = center,
-            radius = maxRadius * 1.5f
-          )
-        )
-
-        // Landmass / Coastal Soil & Sand
-        drawPath(
-          path = coastlinePath,
-          color = Color(0xFF1C1F26)
-        )
-
-        // Golden Sand Shoreline Fringe
-        drawPath(
-          path = coastlinePath,
-          color = Color(0xFFC2A675).copy(alpha = 0.35f),
-          style = Stroke(width = 12f)
-        )
-
-        // Sea Foam / Wave surf animation lapping the beach
-        val waveOffset = waveTideAnim.value * 14f
-        drawPath(
-          path = coastlinePath,
-          color = Color(0xFF8CE8FF).copy(alpha = 0.28f),
-          style = Stroke(width = 4f + waveOffset * 0.5f)
-        )
-
-        // Bathymetric Ocean Depth Contours (-10m, -30m, -60m, -120m)
-        val bathy1 = Path().apply {
-          moveTo(widthPx * 0.48f, 0f)
-          cubicTo(widthPx * 0.54f, heightPx * 0.3f, widthPx * 0.48f, heightPx * 0.6f, widthPx * 0.64f, heightPx)
-        }
-        val bathy2 = Path().apply {
-          moveTo(widthPx * 0.62f, 0f)
-          cubicTo(widthPx * 0.70f, heightPx * 0.35f, widthPx * 0.62f, heightPx * 0.65f, widthPx * 0.78f, heightPx)
-        }
-        val bathy3 = Path().apply {
-          moveTo(widthPx * 0.78f, 0f)
-          cubicTo(widthPx * 0.86f, heightPx * 0.4f, widthPx * 0.78f, heightPx * 0.7f, widthPx * 0.92f, heightPx)
-        }
-
-        drawPath(bathy1, color = Color(0xFF00E5FF).copy(alpha = 0.22f), style = Stroke(width = 1.8f))
-        drawPath(bathy2, color = Color(0xFF0091EA).copy(alpha = 0.25f), style = Stroke(width = 1.8f))
-        drawPath(bathy3, color = Color(0xFF0D47A1).copy(alpha = 0.28f), style = Stroke(width = 1.8f))
-
-        // Google Maps Nautical Harbor Piers & Docks (Paita / Cabo Blanco Muelle)
-        val pierPath = Path().apply {
-          moveTo(widthPx * 0.42f, heightPx * 0.45f)
-          lineTo(widthPx * 0.58f, heightPx * 0.45f)
-          lineTo(widthPx * 0.58f, heightPx * 0.47f)
-          lineTo(widthPx * 0.42f, heightPx * 0.47f)
-        }
-        drawPath(pierPath, color = Color(0xFFD4AF37).copy(alpha = 0.7f), style = Fill)
-
-        // Coastal Highway (Panamericana Norte / Malecón)
-        val road1 = Path().apply {
-          moveTo(widthPx * 0.25f, 0f)
-          cubicTo(widthPx * 0.28f, heightPx * 0.35f, widthPx * 0.22f, heightPx * 0.7f, widthPx * 0.32f, heightPx)
-        }
-        drawPath(road1, color = Color(0xFF37474F), style = Stroke(width = 4.5f))
-        drawPath(road1, color = Color(0xFFFFD54F).copy(alpha = 0.4f), style = Stroke(width = 1.2f))
-
-      } else {
-        // Tactical Nautical Vector Grid
-        drawRect(color = OceanDeep)
-
-        // Landmass outline in nautical blueprint green-cyan
-        drawPath(path = coastlinePath, color = Color(0xFF062235))
-        drawPath(path = coastlinePath, color = MarineCyan.copy(alpha = 0.5f), style = Stroke(width = 2.5f))
-
-        // Pier & Port Infrastructure
-        val pierPath = Path().apply {
-          moveTo(widthPx * 0.42f, heightPx * 0.45f)
-          lineTo(widthPx * 0.58f, heightPx * 0.45f)
-        }
-        drawPath(pierPath, color = MarineGold, style = Stroke(width = 3.5f))
-      }
-
       // Latitude and Longitude Grid Lines (Google Maps Táctico)
       for (i in 1..6) {
         val x = (widthPx * i) / 7f
@@ -267,6 +212,23 @@ fun MarineRadarView(
         end = Offset(center.x, center.y + maxRadius),
         strokeWidth = 1f
       )
+
+      // Distance graduation ticks along north/south/east/west axes
+      ringFractions.forEach { fraction ->
+        val ringR = maxRadius * fraction
+        drawLine(
+          color = MarineCyan.copy(alpha = 0.45f),
+          start = Offset(center.x - 5f, center.y - ringR),
+          end = Offset(center.x + 5f, center.y - ringR),
+          strokeWidth = 1.5f
+        )
+        drawLine(
+          color = MarineCyan.copy(alpha = 0.45f),
+          start = Offset(center.x + ringR, center.y - 5f),
+          end = Offset(center.x + ringR, center.y + 5f),
+          strokeWidth = 1.5f
+        )
+      }
 
       // Pokémon GO style expanding sonar radar pulse wave
       val pulseR = maxRadius * pulseAnim.value
@@ -325,7 +287,7 @@ fun MarineRadarView(
           tint = MarineGold,
           modifier = Modifier
             .size(20.dp)
-            .rotate(-30f)
+            .rotate(playerHeading)
         )
       }
     }

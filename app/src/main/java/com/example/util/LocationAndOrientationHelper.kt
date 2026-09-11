@@ -108,14 +108,25 @@ class LocationAndOrientationHelper(private val context: Context) : SensorEventLi
     when (event.sensor.type) {
       Sensor.TYPE_ROTATION_VECTOR -> {
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-        SensorManager.getOrientation(rotationMatrix, orientationAngles)
+        // Remap coordinate system for portrait camera/AR usage
+        val remappedMatrix = FloatArray(9)
+        SensorManager.remapCoordinateSystem(
+          rotationMatrix,
+          SensorManager.AXIS_X,
+          SensorManager.AXIS_Z,
+          remappedMatrix
+        )
+        SensorManager.getOrientation(remappedMatrix, orientationAngles)
         val azimuthDeg = ((Math.toDegrees(orientationAngles[0].toDouble()) + 360) % 360).toFloat()
-        val pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+        // In remapped AR coordinates: 0 is eye-level horizon, positive is up, negative is down
+        val pitchDeg = Math.toDegrees(orientationAngles[1].toDouble()).toFloat().coerceIn(-60f, 60f)
         publishOrientation(azimuthDeg, pitchDeg)
       }
       Sensor.TYPE_ORIENTATION -> {
         val azimuth = (event.values[0] + 360f) % 360f
-        val pitch = event.values[1]
+        // Sensor.TYPE_ORIENTATION pitch is -90 when vertical; offset so upright is 0
+        val rawPitch = event.values[1]
+        val pitch = (rawPitch + 90f).coerceIn(-60f, 60f)
         publishOrientation(azimuth, pitch)
       }
     }

@@ -241,11 +241,11 @@ fun UnderwaterViewport3D(
     if (relHeading > 180f) relHeading -= 360f
     if (relHeading < -180f) relHeading += 360f
 
-    val relPitch = (gameState.creaturePitch - gameState.playerPitch)
+    val relPitch = (gameState.playerPitch - gameState.creaturePitch)
 
-    // Camera FOV in degrees (~50 deg horizontal, ~70 deg vertical)
-    val hFov = 48f
-    val vFov = 65f
+    // Camera FOV in degrees (~52 deg horizontal, ~70 deg vertical)
+    val hFov = 52f
+    val vFov = 70f
 
     val screenX = (relHeading / (hFov / 2f)) * (widthPx / 2f)
     val screenY = (relPitch / (vFov / 2f)) * (heightPx / 2f)
@@ -422,7 +422,11 @@ fun UnderwaterViewport3D(
     }
 
     if (gameState.isHaywireActive) {
-      val isLooking = abs(relHeading) < 36f && abs(relPitch) < 30f
+      // Read the same flag the ViewModel used to apply hull damage / build
+      // neutralization progress, instead of recomputing it here with our own
+      // copy of the angle thresholds — that duplication is what used to make
+      // the HUD say "you're safe" while the game still judged you as looking.
+      val isLooking = gameState.haywireLookingWarning
       androidx.compose.foundation.layout.Column(
         modifier = Modifier
           .align(Alignment.TopCenter)

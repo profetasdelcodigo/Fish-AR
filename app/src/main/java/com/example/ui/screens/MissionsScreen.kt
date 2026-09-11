@@ -88,7 +88,7 @@ fun MissionsScreen(
     mutableStateOf(
       listOf(
         MarineMission("m1", "Captura 5 peces raros", 3, 5, 100, Icons.Default.Shield),
-        MarineMission("m2", "Explora 3 zonas marinas de Piura", 2, 3, 150, Icons.Default.Explore),
+        MarineMission("m2", "Explora 3 zonas marinas", 2, 3, 150, Icons.Default.Explore),
         MarineMission("m3", "Completa 1 encuentro sin ser visto", 1, 1, 200, Icons.Default.VisibilityOff, isCompleted = true),
         MarineMission("m4", "Participa en la Feria San Josefina", 1, 1, 250, Icons.Default.Public, isCompleted = true)
       )
@@ -284,7 +284,7 @@ fun MissionsScreen(
                   letterSpacing = 1.sp
                 )
                 Text(
-                  text = "La Ruta del Atún de Piura",
+                  text = "La Ruta del Atún",
                   color = TextPrimary,
                   fontWeight = FontWeight.Black,
                   fontSize = 15.sp

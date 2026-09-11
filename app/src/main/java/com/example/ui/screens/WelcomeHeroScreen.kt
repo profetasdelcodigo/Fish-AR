@@ -58,7 +58,7 @@ fun WelcomeHeroScreen(
     // 1. FOTOGRAFÍA REAL DEL MAR Y PLAYA DE PIURA (Máncora / Cabo Blanco al Atardecer)
     Image(
       painter = painterResource(id = R.drawable.real_piura_sunset),
-      contentDescription = "Playa y Mar Real de Piura al atardecer",
+      contentDescription = "Playa y Mar al atardecer",
       contentScale = ContentScale.Crop,
       modifier = Modifier.fillMaxSize()
     )
@@ -136,7 +136,7 @@ fun WelcomeHeroScreen(
       )
 
       Text(
-        text = "PescActívate • Costa de Piura",
+        text = "PescActívate • Realidad Aumentada",
         color = MarineCyan,
         fontWeight = FontWeight.Bold,
         fontSize = 14.sp,
@@ -171,7 +171,7 @@ fun WelcomeHeroScreen(
           .padding(horizontal = 12.dp, vertical = 5.dp)
       ) {
         Text(
-          text = "Playa y Mar Real de Piura • Mar de Grau",
+          text = "Exploración Marina Global",
           color = MarineGold,
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold

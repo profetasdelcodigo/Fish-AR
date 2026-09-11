@@ -31,7 +31,7 @@ sealed interface EncounterPhase {
   // Electric discharge arc animation state
   data class ShockFired(val success: Boolean, val message: String) : EncounterPhase
   // Tension reeling phase
-  data class Reeling(val progress: Float, val targetZone: Float) : EncounterPhase
+  data class Reeling(val progress: Float, val targetZone: ClosedFloatingPointRange<Float> = 0.35f..0.65f) : EncounterPhase
   // Win / Capture
   data class Success(val species: FishSpecies) : EncounterPhase
   // Defeat / Jumpscare splash
@@ -48,15 +48,20 @@ data class ArGameState(
   val isFlashlightOn: Boolean = false,
   val batteryPercent: Int = 100,
   val hullIntegrityPercent: Int = 100,
+  val maxBatteryPercent: Int = 100,
+  val maxHullIntegrityPercent: Int = 100,
   val staticInterference: Float = 0f, // 0..1 intensity
   val phase: EncounterPhase = EncounterPhase.Stalking,
   val isHaywireActive: Boolean = false,
   val haywireLookingWarning: Boolean = false,
   val isLookingAwaySafely: Boolean = false, // True when successfully averting eyes during haywire
   val haywireAvertedProgress: Float = 0f,   // 0..1 progress of holding look-away to neutralize frenzy
+  val reelNeedlePosition: Float = 0.5f,     // 0..1 position of the capture precision needle
   val creatureBehavior: CreatureBehavior = CreatureBehavior.SWIMMING_IDLE,
   val chargeTimerProgress: Float = 1f,      // 1.0 down to 0.0 for impact countdown
   val superPezUsed: Boolean = false,
+  val isShieldActive: Boolean = false,
+  val shieldCooldownSeconds: Int = 0,
   val electricShockAnimation: Boolean = false,
   val caughtSpeciesHistory: Set<String> = emptySet(),
   val playerPescacoins: Int = 150

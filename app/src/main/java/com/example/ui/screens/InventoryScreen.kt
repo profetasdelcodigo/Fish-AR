@@ -51,7 +51,7 @@ fun InventoryScreen(
     listOf(
       InventoryItem("flashlight", "Linterna Marina UV", "Revela peces en la oscuridad marina.", 5, Icons.Default.FlashlightOn, MarineCyan),
       InventoryItem("shield", "Escudo Súper Pez", "Te protege de embestidas de arrecife.", 3, Icons.Default.Security, MarineGold),
-      InventoryItem("bait", "Cebo Artesanal Piurano", "Atrae especies raras de profundidad.", 8, Icons.Default.VolunteerActivism, MarineCoral),
+      InventoryItem("bait", "Cebo Artesanal Marino", "Atrae especies raras de profundidad.", 8, Icons.Default.VolunteerActivism, MarineCoral),
       InventoryItem("battery", "Célula de Batería de Casco", "Recarga tus dispositivos y escáner.", 12, Icons.Default.BatteryChargingFull, MarineGreen),
       InventoryItem("lightning", "Rayo Eléctrico", "Aturde al pez durante la ventana de captura.", 4, Icons.Default.ElectricBolt, MarineCyan),
       InventoryItem("medal", "Medalla de Captura", "Úsala en eventos especiales de la feria.", 6, Icons.Default.MilitaryTech, MarineGold)
@@ -86,13 +86,15 @@ fun InventoryScreen(
       }
     }
 
+    val caughtFishList by viewModel.caughtFishLog.collectAsState(initial = emptyList())
+
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      listOf("Objetos", "Mejoras", "Recetas").forEach { tab ->
+      listOf("Objetos", "Mejoras", "Recetas", "Capturas").forEach { tab ->
         val selected = activeTab == tab
         Box(
           modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(if (selected) MarineCyan else OceanCard).border(1.dp, if (selected) MarineCyan else MarineCyan.copy(alpha = .25f), RoundedCornerShape(12.dp)).clickable { MarineSoundEngine.playNavClick(); activeTab = tab }.padding(vertical = 8.dp),
           contentAlignment = Alignment.Center
-        ) { Text(tab, color = if (selected) OceanDeep else TextPrimary, fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold, fontSize = 12.sp) }
+        ) { Text(tab, color = if (selected) OceanDeep else TextPrimary, fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold, fontSize = 11.sp, maxLines = 1) }
       }
     }
 
@@ -127,9 +129,30 @@ fun InventoryScreen(
         }
       }
       "Recetas" -> LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { RecipeCard("Ceviche de Mero Murike", "Mero fresco, limón, ají limo, cebolla, camote y choclo.", MarineGold) }
+        item { RecipeCard("Ceviche de Mero", "Mero fresco, limón, ají limo, cebolla, camote y choclo.", MarineGold) }
         item { RecipeCard("Sudado de Cabrilla", "Cabrilla, chicha de jora, tomate, cebolla, culantro y yuca.", MarineCyan) }
         item { RecipeCard("Caballa Norteña", "Caballa, limón, cebolla roja, yuca y camote.", MarineGreen) }
+      }
+      "Capturas" -> LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (caughtFishList.isEmpty()) {
+            item { Text("Aún no has capturado ningún espécimen.", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
+        } else {
+            items(caughtFishList) { log ->
+              val fishData = com.example.model.MarineDatabase.speciesList.find { it.id == log.speciesId }
+              Card(colors = CardDefaults.cardColors(containerColor = OceanCard), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, MarineGold.copy(alpha = .3f)), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                  Box(Modifier.size(44.dp).clip(CircleShape).background(MarineGold.copy(alpha = .15f)).border(1.2.dp, MarineGold.copy(alpha = .5f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Phishing, "Captura", tint = MarineGold, modifier = Modifier.size(24.dp)) }
+                  Spacer(Modifier.width(14.dp))
+                  Column(Modifier.weight(1f)) {
+                      Text(fishData?.commonName ?: log.speciesId, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                      val date = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(log.caughtAt))
+                      Text("Peso: ${"%.2f".format(log.weight)} kg", color = MarineCyan, fontSize = 12.sp)
+                      Text("Fecha: $date", color = TextSecondary, fontSize = 10.sp)
+                  }
+                }
+              }
+            }
+        }
       }
     }
   }

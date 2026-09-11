@@ -136,7 +136,7 @@ fun FairInfoDialog(
           Spacer(modifier = Modifier.width(8.dp))
           Column {
             Text("Viernes 11 de Setiembre • 10:00 a.m.", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text("Comunidad educativa 'San Josefina' • Piura", color = TextSecondary, fontSize = 11.sp)
+            Text("Red de Cuidado Oceánico", color = TextSecondary, fontSize = 11.sp)
           }
         }
 
@@ -176,9 +176,9 @@ fun FairInfoDialog(
           verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
           Text("ACTIVIDADES Y EXPOSICIONES DESTACADAS:", color = MarineGold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-          Text("• Feria Gastronómica a base de pescado típico de Piura", color = TextSecondary, fontSize = 11.sp)
+          Text("• Feria Gastronómica a base de pescado típico costero", color = TextSecondary, fontSize = 11.sp)
           Text("• Teatro \"SUPER PEZ\" héroe de la nutrición escolar", color = TextSecondary, fontSize = 11.sp)
-          Text("• Maquetas de ecosistemas marinos y esculturas de Piura", color = TextSecondary, fontSize = 11.sp)
+          Text("• Maquetas de ecosistemas marinos y esculturas marinas", color = TextSecondary, fontSize = 11.sp)
           Text("• Reflexión sobre el cuidado de la biodiversidad marina", color = TextSecondary, fontSize = 11.sp)
           Text("• Juegos interactivos: Pesca magnética y Memotest marino", color = TextSecondary, fontSize = 11.sp)
         }

@@ -81,10 +81,10 @@ fun EcosystemsScreen(
 ) {
   val habitats = remember {
     listOf(
-      MarineHabitat("coral", "Arrecife de Coral y Rocas", "Cabo Blanco y Peña Redonda", 12, 20, R.drawable.img_real_cabrilla_3d, MarineCyan),
-      MarineHabitat("deep", "Fosa Abisal y Zona Profunda", "Fosa Oceánica de Paita", 8, 15, R.drawable.img_real_mero_3d, Color(0xFF7C4DFF)),
-      MarineHabitat("mangrove", "Manglares y Estuarios", "San Pedro de Vice / Sechura", 6, 12, R.drawable.img_real_tortuga_3d, MarineGreen),
-      MarineHabitat("shelf", "Plataforma Continental", "Bahía de Talara y El Ñuro", 10, 18, R.drawable.img_real_bonito_3d, MarineGold)
+      MarineHabitat("coral", "Arrecife de Coral y Rocas", "Aguas Someras", 12, 20, R.drawable.img_real_cabrilla_3d, MarineCyan),
+      MarineHabitat("deep", "Fosa Abisal y Zona Profunda", "Alta Mar", 8, 15, R.drawable.img_real_mero_3d, Color(0xFF7C4DFF)),
+      MarineHabitat("mangrove", "Manglares y Estuarios", "Costas de Vegetación", 6, 12, R.drawable.img_real_tortuga_3d, MarineGreen),
+      MarineHabitat("shelf", "Plataforma Continental", "Litoral Oceánico", 10, 18, R.drawable.img_real_bonito_3d, MarineGold)
     )
   }
 

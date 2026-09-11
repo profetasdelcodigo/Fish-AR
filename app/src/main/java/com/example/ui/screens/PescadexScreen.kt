@@ -53,7 +53,7 @@ import com.example.R
 import com.example.audio.MarineSoundEngine
 import com.example.game.MarineGameViewModel
 import com.example.model.FishSpecies
-import com.example.model.PiuraMarineDatabase
+import com.example.model.MarineDatabase
 import com.example.ui.theme.MarineCyan
 import com.example.ui.theme.MarineGold
 import com.example.ui.theme.OceanAbyss
@@ -156,7 +156,7 @@ fun PescadexScreen(
       horizontalArrangement = Arrangement.spacedBy(12.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-      items(PiuraMarineDatabase.speciesList) { species ->
+      items(MarineDatabase.speciesList) { species ->
         val isUnlocked = unlockedIds.contains(species.id)
         val rarityColor = Color(species.rarity.colorHex)
 
@@ -260,7 +260,7 @@ fun PescadexScreen(
           Icon(Icons.Default.Waves, contentDescription = null, tint = MarineCyan, modifier = Modifier.size(16.dp))
           Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = "${unlockedIds.size} / ${PiuraMarineDatabase.speciesList.size} especies registradas",
+            text = "${unlockedIds.size} / ${MarineDatabase.speciesList.size} especies registradas",
             color = MarineCyan,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold
@@ -268,7 +268,7 @@ fun PescadexScreen(
         }
 
         LinearProgressIndicator(
-          progress = { unlockedIds.size.toFloat() / PiuraMarineDatabase.speciesList.size.toFloat() },
+          progress = { unlockedIds.size.toFloat() / MarineDatabase.speciesList.size.toFloat() },
           modifier = Modifier
             .width(100.dp)
             .height(6.dp)

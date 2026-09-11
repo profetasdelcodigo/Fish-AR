@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,9 +40,12 @@ import com.example.ui.theme.OceanDeep
 @Composable
 fun MagneticReelMeter(
   progress: Float, // 0..1
+  needlePosition: Float = 0.5f, // 0..1, sweeps back and forth
+  targetZone: ClosedFloatingPointRange<Float> = 0.35f..0.65f,
   onReelTap: () -> Unit,
   modifier: Modifier = Modifier
 ) {
+  val isPrecise = needlePosition in targetZone
   Column(
     modifier = modifier
       .fillMaxWidth(0.9f)
@@ -59,10 +64,38 @@ fun MagneticReelMeter(
       fontSize = 15.sp
     )
     Text(
-      text = "Presiona para estabilizar el campo antes de que el pez escape",
-      color = Color.White,
+      text = if (isPrecise) "¡ZONA PRECISA! Toca AHORA para máximo efecto" else "Espera a que la aguja entre en la zona dorada",
+      color = if (isPrecise) MarineGreen else Color.White,
+      fontWeight = if (isPrecise) FontWeight.Bold else FontWeight.Normal,
       fontSize = 12.sp
     )
+
+    // Precision Needle Bar: gold zone is the "sweet spot"; the cyan needle sweeps back and forth.
+    BoxWithConstraints(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(20.dp)
+        .clip(RoundedCornerShape(10.dp))
+        .background(OceanCard)
+        .border(1.dp, MarineCyan.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+        .testTag("reel_precision_bar")
+    ) {
+      val barWidth = maxWidth
+      Box(
+        modifier = Modifier
+          .fillMaxHeight()
+          .width(barWidth * (targetZone.endInclusive - targetZone.start))
+          .offset(x = barWidth * targetZone.start)
+          .background(MarineGold.copy(alpha = 0.55f))
+      )
+      Box(
+        modifier = Modifier
+          .fillMaxHeight()
+          .width(4.dp)
+          .offset(x = barWidth * needlePosition.coerceIn(0f, 1f) - 2.dp)
+          .background(if (isPrecise) MarineGreen else MarineCyan)
+      )
+    }
 
     // Tension Bar
     Box(
@@ -98,7 +131,7 @@ fun MagneticReelMeter(
     ) {
       Button(
         onClick = onReelTap,
-        colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
+        colors = ButtonDefaults.buttonColors(containerColor = if (isPrecise) MarineGreen else MarineCyan, contentColor = OceanDeep),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
           .fillMaxWidth(0.85f)
@@ -108,7 +141,7 @@ fun MagneticReelMeter(
         Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-          text = "ESTABILIZAR CAMPO",
+          text = if (isPrecise) "¡ESTABILIZAR AHORA! (+24%)" else "ESTABILIZAR CAMPO (+8%)",
           fontWeight = FontWeight.Black,
           fontSize = 14.sp
         )

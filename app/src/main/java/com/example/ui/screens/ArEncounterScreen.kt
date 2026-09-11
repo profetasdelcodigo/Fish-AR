@@ -85,6 +85,9 @@ fun ArEncounterScreen(
   var isMapOverlayExpanded by remember { mutableStateOf(false) }
 
   val realLocation by viewModel.realLocation.collectAsState()
+  val tournamentState by viewModel.tournamentState.collectAsState()
+  val pvpState by viewModel.pvpState.collectAsState()
+  val coopState by viewModel.coopState.collectAsState()
 
   Box(
     modifier = modifier
@@ -248,6 +251,89 @@ fun ArEncounterScreen(
           )
         }
       }
+
+      // Live Tournament / PvP / Co-op Active Banner
+      if (tournamentState.isActive) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(OceanAbyss.copy(alpha = 0.92f))
+            .border(1.dp, MarineGold, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          val min = tournamentState.remainingSeconds / 60
+          val sec = tournamentState.remainingSeconds % 60
+          Text(
+            text = "🏆 ${tournamentState.username}",
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp
+          )
+          Text(
+            text = String.format(java.util.Locale.getDefault(), "⏱️ %02d:%02d", min, sec),
+            color = if (tournamentState.remainingSeconds <= 30) Color(0xFFFF5252) else MarineGold,
+            fontWeight = FontWeight.Black,
+            fontSize = 12.sp
+          )
+          Text(
+            text = "${tournamentState.score} pts (x${tournamentState.currentCombo})",
+            color = MarineCyan,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.5.sp
+          )
+        }
+      } else if (pvpState.opponentScore > 0 || pvpState.opponentFishes > 0) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(OceanAbyss.copy(alpha = 0.92f))
+            .border(1.dp, MarineCyan, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "⚔️ VS ${pvpState.opponentUsername}",
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp
+          )
+          Text(
+            text = "Rival: ${pvpState.opponentScore} pts",
+            color = MarineCyan,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.5.sp
+          )
+        }
+      } else if (coopState.teamScore > 0 || coopState.teamFishesCaught > 0) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(OceanAbyss.copy(alpha = 0.92f))
+            .border(1.dp, MarineGreen, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "🤝 Equipo: ${coopState.teamScore} pts",
+            color = MarineGreen,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp
+          )
+          Text(
+            text = "Capturas Dúo: ${coopState.teamFishesCaught}",
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp
+          )
+        }
+      }
     }
 
     // 2.1. Maritime Google Maps Real-Time GPS Overlay
@@ -278,23 +364,24 @@ fun ArEncounterScreen(
       }
     }
 
-    // 3. Tension Reeling Overlay
+    // 3. Tension Reeling Overlay (Single high-precision capture HUD)
     val phase = gameState.phase
     if (phase is EncounterPhase.Reeling) {
       Box(
         modifier = Modifier
           .align(Alignment.Center)
-          .padding(16.dp)
+          .fillMaxWidth()
+          .padding(20.dp),
+        contentAlignment = Alignment.Center
       ) {
         MagneticReelMeter(
           progress = phase.progress,
-          onReelTap = { viewModel.advanceReelProgress(0.14f) }
+          needlePosition = gameState.reelNeedlePosition,
+          targetZone = phase.targetZone,
+          onReelTap = { viewModel.tapReelStabilizer() }
         )
       }
-    }
-
-    // 4. Tactical FNAF AR Control Panel (Flashlight, Shocker Taser, Super Pez Shield)
-    if (phase !is EncounterPhase.Success && phase !is EncounterPhase.Splashed) {
+    } else if (phase !is EncounterPhase.Success && phase !is EncounterPhase.Splashed) {
       Column(
         modifier = Modifier
           .align(Alignment.BottomCenter)
@@ -305,17 +392,19 @@ fun ArEncounterScreen(
       ) {
         // Tactical guidance message banner
         val tacticalNotice = when {
+          gameState.isShieldActive -> "🛡️ ¡ESCUDO SÓNICO ACTIVO! (+35% CASCO Y PROTECCIÓN CONTRA ATAQUES)"
           gameState.isHaywireActive && gameState.isLookingAwaySafely -> "¡DESVÍO EXITOSO! MANTÉN LA MIRADA LEJOS HASTA QUE SE CALME (${(gameState.haywireAvertedProgress * 100).roundToInt()}%)"
           gameState.isHaywireActive -> "¡FRENESÍ SUBMARINO! ¡DESVÍA LA MIRADA INMEDIATAMENTE PARA NO DAÑAR TU CASCO!"
-          phase is EncounterPhase.RealCharge -> "¡EMBESTIDA REAL! IMPACTO EN ${(phase.timeRemainingSeconds * 10).roundToInt() / 10f}s • ¡DISPARA AL ESTAR A < 15M!"
+          phase is EncounterPhase.RealCharge -> "¡EMBESTIDA REAL! IMPACTO EN ${(phase.timeRemainingSeconds * 10).roundToInt() / 10f}s • ¡DISPARA CHOQUE!"
           phase is EncounterPhase.FakeCharge -> "¡AMAGO FANTASMA! ¡NO DISPARES O PERDERÁS ENERGÍA!"
-          gameState.isFlashlightOn -> "LINTERNA UV ACTIVA • ALUMBRA PARA LOCALIZAR SILUETAS Y DETENER EL ACECHO"
-          else -> "RASTREA EL ORIGEN DE LA ESTÁTICA GIRANDO EN 360 GRADOS"
+          gameState.isFlashlightOn -> "LINTERNA UV ACTIVA • ALUMBRA DIRECTAMENTE AL PEZ PARA ATURDIRLO Y PESCARLO"
+          else -> "ENFOCA EL PEZ Y DISPARA LA DESCARGA DE CHOQUE PARA INICIAR LA PESCA"
         }
 
         Text(
           text = tacticalNotice,
           color = when {
+            gameState.isShieldActive -> MarineCyan
             gameState.isHaywireActive && gameState.isLookingAwaySafely -> MarineGreen
             gameState.isHaywireActive || phase is EncounterPhase.RealCharge -> Color(0xFFFF5252)
             else -> TextPrimary
@@ -328,6 +417,7 @@ fun ArEncounterScreen(
             .border(
               1.dp,
               when {
+                gameState.isShieldActive -> MarineCyan
                 gameState.isHaywireActive && gameState.isLookingAwaySafely -> MarineGreen
                 gameState.isHaywireActive || phase is EncounterPhase.RealCharge -> Color.Red
                 else -> MarineCyan.copy(alpha = 0.4f)
@@ -382,22 +472,33 @@ fun ArEncounterScreen(
           }
 
           // 3. Súper Pez Emergency Shield
+          val isShieldOnCooldown = gameState.shieldCooldownSeconds > 0
           IconButton(
             onClick = { viewModel.activateSuperPezShield() },
-            enabled = !gameState.superPezUsed,
+            enabled = !isShieldOnCooldown,
             modifier = Modifier
               .size(64.dp)
               .clip(CircleShape)
-              .background(if (!gameState.superPezUsed) MarineGreen else OceanCard.copy(alpha = 0.4f))
-              .border(2.dp, if (!gameState.superPezUsed) Color.White else Color.Gray, CircleShape)
+              .background(if (!isShieldOnCooldown) MarineGreen else OceanCard.copy(alpha = 0.4f))
+              .border(2.dp, if (!isShieldOnCooldown) Color.White else Color.Gray, CircleShape)
               .testTag("super_pez_shield_button")
           ) {
-            Icon(
-              imageVector = Icons.Default.Shield,
-              contentDescription = "Escudo Protector Súper Pez",
-              tint = if (!gameState.superPezUsed) OceanDeep else Color.Gray,
-              modifier = Modifier.size(28.dp)
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              Icon(
+                imageVector = Icons.Default.Shield,
+                contentDescription = "Escudo Sónico Protector (Restaura +35% Casco y +30% Energía)",
+                tint = if (!isShieldOnCooldown) OceanDeep else Color.Gray,
+                modifier = Modifier.size(24.dp)
+              )
+              if (isShieldOnCooldown) {
+                Text(
+                  text = "${gameState.shieldCooldownSeconds}s",
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = Color.LightGray
+                )
+              }
+            }
           }
         }
       }
@@ -405,6 +506,8 @@ fun ArEncounterScreen(
 
     // 5. Success Dialog (Pure Cyber-Marine Aesthetic, Zero Emojis)
     if (phase is EncounterPhase.Success) {
+      val isMatchActive = tournamentState.isActive || pvpState.isMatchActive || coopState.isMissionActive
+
       Box(
         modifier = Modifier
           .fillMaxSize()
@@ -495,18 +598,47 @@ fun ArEncounterScreen(
               }
             }
 
-            Button(
-              onClick = { viewModel.endEncounter() },
-              colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
-              shape = RoundedCornerShape(14.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .testTag("collect_reward_button")
-            ) {
-              Text(
-                text = "REGISTRAR EN PESCADEX (+${phase.species.energyRequired * 4} PESCACOINS)",
-                fontWeight = FontWeight.Black
-              )
+            if (isMatchActive) {
+              Button(
+                onClick = { viewModel.spawnNextFishInMatch() },
+                colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("collect_reward_button")
+              ) {
+                Text(
+                  text = "⚡ ¡PESCAR SIGUIENTE PEZ! (PARTIDA ACTIVA)",
+                  fontWeight = FontWeight.Black
+                )
+              }
+
+              Button(
+                onClick = { viewModel.endEncounter() },
+                colors = ButtonDefaults.buttonColors(containerColor = OceanDeep),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Text(
+                  text = "SALIR DE LA PARTIDA",
+                  color = TextSecondary,
+                  fontSize = 12.sp
+                )
+              }
+            } else {
+              Button(
+                onClick = { viewModel.endEncounter() },
+                colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("collect_reward_button")
+              ) {
+                Text(
+                  text = "REGISTRAR EN PESCADEX (+${phase.species.energyRequired * 4} PESCACOINS)",
+                  fontWeight = FontWeight.Black
+                )
+              }
             }
           }
         }
@@ -515,6 +647,8 @@ fun ArEncounterScreen(
 
     // 6. Splashed / Defeat Dialog (No Emojis, Clean Marine Design)
     if (phase is EncounterPhase.Splashed) {
+      val isMatchActive = tournamentState.isActive || pvpState.isMatchActive || coopState.isMissionActive
+
       Box(
         modifier = Modifier
           .fillMaxSize()
@@ -550,7 +684,7 @@ fun ArEncounterScreen(
             )
 
             Text(
-              text = "Táctica FNAF AR: Cuando el pez entre en Frenesí (ojos rojos), desvía la mirada. Cuando embista físicamente hacia ti, activa la descarga eléctrica antes del impacto.",
+              text = "Táctica: Cuando el pez entre en Frenesí (ojos rojos), desvía la mirada. Para capturarlo, enfréntalo y activa la Descarga de Choque para jalar el sedal.",
               color = MarineGold,
               fontSize = 11.sp,
               textAlign = TextAlign.Center
@@ -568,13 +702,92 @@ fun ArEncounterScreen(
                 Text("RADAR", color = TextPrimary, fontSize = 12.sp)
               }
 
-              Button(
-                onClick = { viewModel.startEncounter(gameState.currentSpecies) },
-                colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
-                modifier = Modifier.weight(1f)
-              ) {
-                Text("REINTENTAR", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+              val canContinue = !(coopState.isMissionActive && !coopState.iAmAlive) && !(pvpState.isMatchActive && !pvpState.iAmAlive)
+              if (canContinue) {
+                Button(
+                  onClick = {
+                    if (isMatchActive) {
+                      viewModel.spawnNextFishInMatch()
+                    } else {
+                      viewModel.startEncounter(gameState.currentSpecies)
+                    }
+                  },
+                  colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanDeep),
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Text(if (isMatchActive) "SIGUIENTE PEZ" else "REINTENTAR", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
               }
+            }
+          }
+        }
+      }
+    }
+
+    // 7. Match Finished Overlay (Summary)
+    val isMatchFinished = (tournamentState.isFinished && tournamentState.isActive.let { false }) || 
+                         (pvpState.isFinished && !pvpState.isMatchActive) || 
+                         (coopState.isFinished && !coopState.isMissionActive)
+    
+    if (isMatchFinished) {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .background(Color.Black.copy(alpha = 0.9f))
+          .padding(32.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        Card(
+          colors = CardDefaults.cardColors(containerColor = OceanCard),
+          shape = RoundedCornerShape(28.dp),
+          border = androidx.compose.foundation.BorderStroke(2.dp, MarineGold),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+          ) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MarineGold, modifier = Modifier.size(54.dp))
+            
+            Text(
+              text = "PARTIDA FINALIZADA",
+              color = MarineGold,
+              fontWeight = FontWeight.Black,
+              fontSize = 22.sp
+            )
+            
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+               val finalScore = when {
+                 tournamentState.isFinished -> tournamentState.score
+                 pvpState.isFinished -> pvpState.myScore
+                 coopState.isFinished -> coopState.teamScore
+                 else -> 0
+               }
+               val finalCaptures = when {
+                 tournamentState.isFinished -> tournamentState.fishesCaught
+                 pvpState.isFinished -> pvpState.myFishesCaught
+                 coopState.isFinished -> coopState.teamFishesCaught
+                 else -> 0
+               }
+               
+               Text("PUNTUACIÓN FINAL", color = TextSecondary, fontSize = 12.sp)
+               Text("$finalScore pts", color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 32.sp)
+               Text("Capturas logradas: $finalCaptures", color = MarineCyan, fontSize = 14.sp)
+               
+               if (pvpState.isFinished) {
+                 Spacer(modifier = Modifier.height(8.dp))
+                 Text(pvpState.winnerMessage ?: "Duelo concluido", color = MarineGold, fontWeight = FontWeight.Bold, fontSize = 14.sp, textAlign = TextAlign.Center)
+               }
+            }
+            
+            Button(
+              onClick = { viewModel.endEncounter() },
+              colors = ButtonDefaults.buttonColors(containerColor = MarineCyan, contentColor = OceanAbyss),
+              shape = RoundedCornerShape(14.dp),
+              modifier = Modifier.fillMaxWidth().height(50.dp)
+            ) {
+              Text("VOLVER AL CENTRO DE MODOS", fontWeight = FontWeight.Black)
             }
           }
         }
