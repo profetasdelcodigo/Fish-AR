@@ -39,13 +39,17 @@ sealed class MultiplayerMessage {
   data class CoopHullUpdate(val newHullPercent: Int) : MultiplayerMessage()
   data class MatchStart(val mode: String, val initialSeed: Long) : MultiplayerMessage()
   data class SpawnFish(val speciesId: String, val initialHeading: Float, val distance: Float) : MultiplayerMessage()
+  data class PlayerReady(val username: String) : MultiplayerMessage()
+  data class PlayerDied(val username: String) : MultiplayerMessage()
+  data class FinalMatchResults(val username: String, val score: Int, val captures: Int, val bestFish: String) : MultiplayerMessage()
   data class ChatOrAlert(val sender: String, val text: String) : MultiplayerMessage()
 }
 
 class MarineMultiplayerManager(private val context: Context) {
   private val scope = CoroutineScope(Dispatchers.IO + Job())
   private val bluetoothAdapter: BluetoothAdapter? = try {
-    BluetoothAdapter.getDefaultAdapter()
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
+    manager.adapter
   } catch (e: Exception) {
     null
   }
@@ -77,51 +81,80 @@ class MarineMultiplayerManager(private val context: Context) {
     }
   }
 
+  private fun hasBluetoothPermissions(): Boolean {
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+      context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+      context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      true
+    }
+  }
+
   @SuppressLint("MissingPermission")
   fun startHostRoom(roomName: String = "PescActivate-Host") {
     disconnect()
+    
+    if (!hasBluetoothPermissions()) {
+      _connectionState.value = MultiplayerState.Error("Faltan permisos de Bluetooth. Por favor, acéptalos.")
+      return
+    }
+
+    if (bluetoothAdapter == null) {
+      _connectionState.value = MultiplayerState.Error("Este dispositivo no soporta Bluetooth.")
+      return
+    }
+
+    if (!bluetoothAdapter.isEnabled) {
+      _connectionState.value = MultiplayerState.Error("El Bluetooth está desactivado. Actívalo para jugar.")
+      return
+    }
+
     _connectionState.value = MultiplayerState.Hosting(roomName)
 
     scope.launch {
       try {
-        if (bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
-          serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord(APP_SERVICE_NAME, SECURE_UUID)
-          Log.d(TAG, "Bluetooth RFCOMM Server listening...")
-          val socket = serverSocket?.accept(60000) // 60s timeout
-          if (socket != null) {
-            setupActiveSocket(socket, peerName = socket.remoteDevice?.name ?: "P2P Rival", isHost = true)
-            return@launch
-          }
+        serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord(APP_SERVICE_NAME, SECURE_UUID)
+        Log.d(TAG, "Bluetooth RFCOMM Server listening...")
+        val socket = serverSocket?.accept(60000) // 60s timeout
+        if (socket != null) {
+          setupActiveSocket(socket, peerName = socket.remoteDevice?.name ?: "P2P Rival", isHost = true)
         }
       } catch (e: Exception) {
-        Log.e(TAG, "Bluetooth server accept error or not available: ${e.message}")
+        Log.e(TAG, "Bluetooth server accept error: ${e.message}")
+        _connectionState.value = MultiplayerState.Error("Error al crear sala: ${e.message}")
       }
-
-      // If Bluetooth RFCOMM didn't connect, keep host active in ready state
-      // (allows local simulated dual-phone linking or direct bridge)
     }
   }
 
   @SuppressLint("MissingPermission")
   fun connectToDevice(deviceAddress: String, deviceName: String) {
     disconnect()
+
+    if (!hasBluetoothPermissions()) {
+      _connectionState.value = MultiplayerState.Error("Faltan permisos de Bluetooth.")
+      return
+    }
+
+    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+      _connectionState.value = MultiplayerState.Error("Bluetooth no disponible o desactivado.")
+      return
+    }
+
     _connectionState.value = MultiplayerState.Connecting(deviceName)
 
     scope.launch {
       try {
-        val device: BluetoothDevice? = bluetoothAdapter?.getRemoteDevice(deviceAddress)
+        val device: BluetoothDevice? = bluetoothAdapter.getRemoteDevice(deviceAddress)
         if (device != null) {
           bluetoothAdapter.cancelDiscovery()
           val socket = device.createRfcommSocketToServiceRecord(SECURE_UUID)
           socket.connect()
           setupActiveSocket(socket, peerName = device.name ?: deviceName, isHost = false)
-          return@launch
         }
       } catch (e: Exception) {
         Log.e(TAG, "Bluetooth client connection failed: ${e.message}")
+        _connectionState.value = MultiplayerState.Error("No se pudo conectar con $deviceName.")
       }
-
-      _connectionState.value = MultiplayerState.Error("No se pudo conectar con $deviceName por Bluetooth.")
     }
   }
 
@@ -191,6 +224,9 @@ class MarineMultiplayerManager(private val context: Context) {
       is MultiplayerMessage.MatchStart -> "START|${msg.mode}|${msg.initialSeed}"
       is MultiplayerMessage.SpawnFish -> "SPAWN|${msg.speciesId}|${msg.initialHeading}|${msg.distance}"
       is MultiplayerMessage.ChatOrAlert -> "MSG|${msg.sender}|${msg.text}"
+      is MultiplayerMessage.FinalMatchResults -> "FINAL|${msg.username}|${msg.score}|${msg.captures}|${msg.bestFish}"
+      is MultiplayerMessage.PlayerDied -> "DIED|${msg.username}"
+      is MultiplayerMessage.PlayerReady -> "READY|${msg.username}"
     }
   }
 
@@ -230,6 +266,18 @@ class MarineMultiplayerManager(private val context: Context) {
           speciesId = parts.getOrNull(1) ?: "bonito",
           initialHeading = parts.getOrNull(2)?.toFloatOrNull() ?: 0f,
           distance = parts.getOrNull(3)?.toFloatOrNull() ?: 25f
+        )
+        "READY" -> MultiplayerMessage.PlayerReady(
+          username = parts.getOrNull(1) ?: "Rival"
+        )
+        "DIED" -> MultiplayerMessage.PlayerDied(
+          username = parts.getOrNull(1) ?: "Rival"
+        )
+        "FINAL" -> MultiplayerMessage.FinalMatchResults(
+          username = parts.getOrNull(1) ?: "Rival",
+          score = parts.getOrNull(2)?.toIntOrNull() ?: 0,
+          captures = parts.getOrNull(3)?.toIntOrNull() ?: 0,
+          bestFish = parts.getOrNull(4) ?: "Ninguno"
         )
         "MSG" -> MultiplayerMessage.ChatOrAlert(
           sender = parts.getOrNull(1) ?: "Compañero",

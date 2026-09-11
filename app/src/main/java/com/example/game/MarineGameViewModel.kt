@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.MarineSoundEngine
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import com.example.model.CoastalZone
 import com.example.model.FishSpecies
 import com.example.model.GameModeType
@@ -42,6 +44,9 @@ data class TournamentState(
 
 data class PvpState(
   val isMatchActive: Boolean = false,
+  val myUsername: String = "Jugador",
+  val isReady: Boolean = false,
+  val opponentReady: Boolean = false,
   val myScore: Int = 0,
   val myFishesCaught: Int = 0,
   val myCombo: Int = 0,
@@ -61,9 +66,12 @@ data class PvpState(
 
 data class CoopState(
   val isMissionActive: Boolean = false,
+  val myUsername: String = "Jugador",
+  val isReady: Boolean = false,
+  val partnerReady: Boolean = false,
   val partnerUsername: String = "Compañero Marino",
   val assignedRole: String = "Operador de Choque", // Operador de Choque vs Operador de Red
-  val sharedHullPercent: Int = 200,
+  val partnerHullPercent: Int = 100,
   val partnerAlive: Boolean = true,
   val iAmAlive: Boolean = true,
   val teamScore: Int = 0,
@@ -71,6 +79,30 @@ data class CoopState(
   val remainingSeconds: Int = 360, // 6 min co-op
   val isFinished: Boolean = false,
   val recentTeamEvent: String = "Sumergible sincronizado y listo para cazar."
+)
+
+data class MissionState(
+  val id: String,
+  val title: String,
+  val progress: Int,
+  val target: Int,
+  val reward: Int,
+  val isCompleted: Boolean,
+  val isClaimed: Boolean,
+  val icon: androidx.compose.ui.graphics.vector.ImageVector = androidx.compose.material.icons.Icons.Default.Public
+)
+
+data class InventoryItemState(
+  val id: String,
+  val name: String,
+  val count: Int
+)
+
+data class UpgradeState(
+  val id: String,
+  val name: String,
+  val level: Int,
+  val maxLevel: Int = 3
 )
 
 class MarineGameViewModel(application: Application) : AndroidViewModel(application) {
@@ -147,12 +179,85 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   private val _unlockedSpeciesIds = MutableStateFlow(setOf("bonito"))
   val unlockedSpeciesIds: StateFlow<Set<String>> = _unlockedSpeciesIds.asStateFlow()
   
+  private val _allMissions = MutableStateFlow<List<MissionState>>(emptyList())
+  val allMissions: StateFlow<List<MissionState>> = _allMissions.asStateFlow()
+
+  private val _allInventory = MutableStateFlow<List<InventoryItemState>>(emptyList())
+  val allInventory: StateFlow<List<InventoryItemState>> = _allInventory.asStateFlow()
+
+  private val _allUpgrades = MutableStateFlow<List<UpgradeState>>(emptyList())
+  val allUpgrades: StateFlow<List<UpgradeState>> = _allUpgrades.asStateFlow()
+
+  private val _ownedStoreItems = MutableStateFlow<Set<String>>(emptySet())
+  val ownedStoreItems: StateFlow<Set<String>> = _ownedStoreItems.asStateFlow()
+
+  private val _socialSharingEnabled = MutableStateFlow(false)
+  val socialSharingEnabled: StateFlow<Boolean> = _socialSharingEnabled.asStateFlow()
+
+  private val _nightModeEnabled = MutableStateFlow(false)
+  val nightModeEnabled: StateFlow<Boolean> = _nightModeEnabled.asStateFlow()
+
+  private val _welcomeCompleted = MutableStateFlow(false)
+  val welcomeCompleted: StateFlow<Boolean> = _welcomeCompleted.asStateFlow()
+
   val caughtFishLog = repository.allCaughtFish
 
   fun addPescacoins(amount: Int) {
     _pescacoins.update { max(0, it + amount) }
     viewModelScope.launch {
       repository.saveSetting("pescacoins", _pescacoins.value.toString())
+    }
+  }
+
+  fun upgradeEquipment(id: String, cost: Int) {
+    if (_pescacoins.value >= cost) {
+      addPescacoins(-cost)
+      val currentLevel = _allUpgrades.value.find { it.id == id }?.level ?: 0
+      viewModelScope.launch {
+        repository.updateUpgradeLevel(id, currentLevel + 1)
+      }
+      MarineSoundEngine.playSuccessChime()
+    }
+  }
+
+  fun buyStoreItem(id: String, cost: Int) {
+    if (!_ownedStoreItems.value.contains(id) && _pescacoins.value >= cost) {
+      addPescacoins(-cost)
+      _ownedStoreItems.update { it + id }
+      viewModelScope.launch {
+        repository.saveSetting("owned_items", _ownedStoreItems.value.joinToString(","))
+      }
+      MarineSoundEngine.playSuccessChime()
+    }
+  }
+
+  fun toggleSocialSharing() {
+    val newValue = !_socialSharingEnabled.value
+    _socialSharingEnabled.value = newValue
+    viewModelScope.launch {
+      repository.saveSetting("social_sharing", newValue.toString())
+    }
+  }
+
+  fun toggleNightMode() {
+    val newValue = !_nightModeEnabled.value
+    _nightModeEnabled.value = newValue
+    viewModelScope.launch {
+      repository.saveSetting("night_mode", newValue.toString())
+    }
+  }
+
+  fun completeWelcome() {
+    _welcomeCompleted.value = true
+    viewModelScope.launch {
+      repository.saveSetting("welcome_completed", "true")
+    }
+  }
+
+  fun resetWelcome() {
+    _welcomeCompleted.value = false
+    viewModelScope.launch {
+      repository.saveSetting("welcome_completed", "false")
     }
   }
 
@@ -163,6 +268,7 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   // Multiplayer Manager (Bluetooth & Local P2P)
   val multiplayerManager = MarineMultiplayerManager(application.applicationContext)
   val multiplayerState: StateFlow<MultiplayerState> = multiplayerManager.connectionState
+  private var matchRandom = Random(System.currentTimeMillis())
 
   // Fair Tournament State (6 Minutes Mode)
   private val _tournamentState = MutableStateFlow(TournamentState())
@@ -209,7 +315,105 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       val savedMapMode = repository.getSetting("satellite_mode")?.toBooleanStrictOrNull()
       if (savedMapMode != null) _isSatelliteMapMode.value = savedMapMode
 
+      val savedOwnedItems = repository.getSetting("owned_items")
+      if (savedOwnedItems != null) _ownedStoreItems.value = savedOwnedItems.split(",").toSet()
+
+      val savedSocialSharing = repository.getSetting("social_sharing")?.toBooleanStrictOrNull()
+      if (savedSocialSharing != null) _socialSharingEnabled.value = savedSocialSharing
+
+      val savedNightMode = repository.getSetting("night_mode")?.toBooleanStrictOrNull()
+      if (savedNightMode != null) _nightModeEnabled.value = savedNightMode
+
+      val savedWelcome = repository.getSetting("welcome_completed")?.toBooleanStrictOrNull()
+      if (savedWelcome != null) _welcomeCompleted.value = savedWelcome
+
       repository.seedInitialLeaderboardIfEmpty()
+
+      // Real Missions & Inventory seeding
+      launch {
+        repository.getAllMissions().collect { missions ->
+          if (missions.isEmpty()) {
+            repository.saveMission("m1", 0, 5, false, false)
+            repository.saveMission("m2", 0, 3, false, false)
+            repository.saveMission("m3", 0, 1, false, false)
+            repository.saveMission("m4", 1, 1, true, false)
+          } else {
+            _allMissions.value = missions.map {
+              val title = when(it.id) {
+                "m1" -> "Captura 5 peces raros"
+                "m2" -> "Explora 3 zonas marinas"
+                "m3" -> "Encuentro sin ser visto"
+                "m4" -> "Participa en la Feria"
+                else -> "Misión Marina"
+              }
+              val reward = when(it.id) {
+                "m1" -> 100
+                "m2" -> 150
+                "m3" -> 200
+                "m4" -> 250
+                else -> 50
+              }
+              val icon = when(it.id) {
+                "m1" -> androidx.compose.material.icons.Icons.Default.Shield
+                "m2" -> androidx.compose.material.icons.Icons.Default.Explore
+                "m3" -> androidx.compose.material.icons.Icons.Default.VisibilityOff
+                "m4" -> androidx.compose.material.icons.Icons.Default.Public
+                else -> androidx.compose.material.icons.Icons.Default.Public
+              }
+              MissionState(it.id, title, it.progress, it.target, reward, it.isCompleted, it.isClaimed, icon)
+            }
+          }
+        }
+      }
+
+      launch {
+        repository.getAllInventoryItems().collect { items ->
+          if (items.isEmpty()) {
+            repository.saveInventoryItem("flashlight", 5)
+            repository.saveInventoryItem("shield", 3)
+            repository.saveInventoryItem("bait", 8)
+            repository.saveInventoryItem("battery", 12)
+            repository.saveInventoryItem("lightning", 4)
+            repository.saveInventoryItem("medal", 6)
+          } else {
+            _allInventory.value = items.map {
+              val name = when(it.id) {
+                "flashlight" -> "Linterna Marina UV"
+                "shield" -> "Escudo Súper Pez"
+                "bait" -> "Cebo Artesanal"
+                "battery" -> "Célula de Batería"
+                "lightning" -> "Rayo Eléctrico"
+                "medal" -> "Medalla de Captura"
+                else -> it.id
+              }
+              InventoryItemState(it.id, name, it.count)
+            }
+          }
+        }
+      }
+      launch {
+        repository.getAllUpgrades().collect { upgrades ->
+          if (upgrades.isEmpty()) {
+            repository.saveUpgrade("reactor", 0)
+            repository.saveUpgrade("uv", 0)
+            repository.saveUpgrade("shield", 0)
+            repository.saveUpgrade("sonar", 0)
+            repository.saveUpgrade("stabilizer", 0)
+          } else {
+            _allUpgrades.value = upgrades.map {
+              val name = when(it.id) {
+                "reactor" -> "Núcleo de Descarga"
+                "uv" -> "Lente Abisal UV"
+                "shield" -> "Escudo Súper Pez"
+                "sonar" -> "Sonar de Cardumen"
+                "stabilizer" -> "Estabilizador AR"
+                else -> it.id
+              }
+              UpgradeState(it.id, name, it.level)
+            }
+          }
+        }
+      }
     }
 
     startRadarWaveLoop()
@@ -264,11 +468,50 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
             }
           }
           is MultiplayerMessage.CoopHullUpdate -> {
-            _coopState.update { it.copy(sharedHullPercent = msg.newHullPercent) }
-            _gameState.update { it?.copy(hullIntegrityPercent = msg.newHullPercent) }
+            _coopState.update { it.copy(partnerHullPercent = msg.newHullPercent) }
           }
           is MultiplayerMessage.MatchStart -> {
-            // Sincronizar inicio de partida
+            // Sincronizar inicio de partida y semilla compartida
+            matchRandom = Random(msg.initialSeed)
+            if (msg.mode == "PVP") {
+              _pvpState.update { it.copy(opponentReady = true) }
+              checkStartConditions("PVP")
+            } else if (msg.mode == "COOP") {
+              _coopState.update { it.copy(partnerReady = true) }
+              checkStartConditions("COOP")
+            }
+          }
+          is MultiplayerMessage.PlayerReady -> {
+            if (pendingGameStartMode == "PVP") {
+              _pvpState.update { it.copy(opponentUsername = msg.username, opponentReady = true) }
+              checkStartConditions("PVP")
+            } else if (pendingGameStartMode == "COOP") {
+              _coopState.update { it.copy(partnerUsername = msg.username, partnerReady = true) }
+              checkStartConditions("COOP")
+            }
+          }
+          is MultiplayerMessage.PlayerDied -> {
+            if (_pvpState.value.isMatchActive) {
+              _pvpState.update { it.copy(opponentAlive = false) }
+              _pvpState.update { it.copy(winnerMessage = "¡Tu rival ha sido eliminado! Sigue pescando para el récord.") }
+            } else if (_coopState.value.isMissionActive) {
+              _coopState.update { it.copy(partnerAlive = false, partnerHullPercent = 0, recentTeamEvent = "¡Tu compañero ha sido eliminado! El sumergible resiste por ti.") }
+            }
+          }
+          is MultiplayerMessage.FinalMatchResults -> {
+             // Registrar el resultado del oponente/compañero en nuestra BD local para sincronización de tablas
+             viewModelScope.launch {
+               val mode = if (_coopState.value.isMissionActive || _coopState.value.isFinished) "COOP" else "PVP"
+               scoreRepository.saveScore(
+                 username = msg.username,
+                 score = msg.score,
+                 captures = msg.captures,
+                 bestSpecies = msg.bestFish,
+                 maxCombo = 1,
+                 durationSeconds = 360,
+                 gameMode = mode
+               )
+             }
           }
           is MultiplayerMessage.SpawnFish -> {
             val species = MarineDatabase.speciesList.find { it.id == msg.speciesId } ?: return@collect
@@ -332,6 +575,7 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun transportToZone(zone: CoastalZone) {
+    updateMissionProgress("m2", 1) // Incrementar exploración de zonas
     MarineSoundEngine.playSonarPing()
     if (zone.isRealGpsMode || zone.id == "gps_personal") {
       switchToPersonalGpsMode()
@@ -349,7 +593,10 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     _transportNotification.value = null
   }
 
+  private var wasDamagedInCurrentEncounter = false
+
   fun startEncounter(species: FishSpecies, forceHeading: Float? = null) {
+    wasDamagedInCurrentEncounter = false
     encounterLoopJob?.cancel()
     batteryDrainJob?.cancel()
 
@@ -399,7 +646,9 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   private fun takeDamage(hitMessage: String) {
+    wasDamagedInCurrentEncounter = true
     val state = _gameState.value ?: return
+
     // Aseguramos que 3 golpes maten al jugador (100 / 3 = 33.3 -> 34 por golpe)
     val damageAmount = 34
 
@@ -419,6 +668,10 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       )}
       multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("SCORE_PENALTY", 50))
       multiplayerManager.sendMessage(MultiplayerMessage.CoopHullUpdate(newHull))
+      
+      if (newHull <= 0) {
+          multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("PLAYER_ELIMINATED", 0, _coopState.value.myUsername))
+      }
     } else if (isPvp) {
       _pvpState.update { it.copy(myScore = max(0, it.myScore - 50)) }
       multiplayerManager.sendMessage(MultiplayerMessage.ScoreUpdate(
@@ -427,6 +680,10 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
         fishesCaught = _pvpState.value.myFishesCaught,
         combo = _pvpState.value.myCombo
       ))
+      
+      if (newHull <= 0) {
+          multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("PLAYER_ELIMINATED", 0, _pvpState.value.myUsername))
+      }
     } else if (isTournament) {
       _tournamentState.update { it.copy(score = max(0, it.score - 50)) }
     }
@@ -454,12 +711,12 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     val isPvp = _pvpState.value.isMatchActive
 
     val finalMessage = if (isCoop) {
-      _coopState.update { it.copy(iAmAlive = false, recentTeamEvent = "¡Has sido eliminado! Queda 1 sobreviviente.") }
-      multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("PLAYER_ELIMINATED", 0))
+      _coopState.update { it.copy(iAmAlive = false, recentTeamEvent = "¡HAS SIDO ELIMINADO! Queda 1 sobreviviente.") }
+      multiplayerManager.sendMessage(MultiplayerMessage.PlayerDied(_coopState.value.myUsername))
       "¡Has sido eliminado! Queda 1 sobreviviente.\n($message)"
     } else if (isPvp) {
       _pvpState.update { it.copy(iAmAlive = false, myScore = max(0, it.myScore - 150)) }
-      multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("PLAYER_ELIMINATED", 0))
+      multiplayerManager.sendMessage(MultiplayerMessage.PlayerDied(_pvpState.value.myUsername))
       multiplayerManager.sendMessage(MultiplayerMessage.ScoreUpdate(
         username = _tournamentState.value.username,
         score = _pvpState.value.myScore,
@@ -871,7 +1128,10 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
                 }
               } else {
                 takeDamage("¡Embestida directa del ${state.currentSpecies.commonName}!")
-                break
+                val currentState = _gameState.value
+                if (currentState == null || currentState.hullIntegrityPercent <= 0) {
+                  break
+                }
               }
             } else {
               _gameState.update {
@@ -1040,14 +1300,15 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     _activeTutorialMode.value = null
   }
 
-  // ================= TORNEO DE FERIA 6 MINUTOS =================
+  // ================= TORNEO DE FERIA 3 MINUTOS =================
   fun startFairTournament(username: String) {
+    updateMissionProgress("m4", 1) // Incrementar participación en la Feria
     val cleanName = username.trim().ifEmpty { "Pescador ${Random.nextInt(100, 999)}" }
     tournamentTimerJob?.cancel()
     _tournamentState.value = TournamentState(
       isActive = true,
       username = cleanName,
-      remainingSeconds = 360, // 6:00 min
+      remainingSeconds = 180, // 3:00 min
       score = 0,
       fishesCaught = 0,
       currentCombo = 0,
@@ -1056,7 +1317,7 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       isFinished = false
     )
 
-    // Timer Loop: 6 minutes countdown
+    // Timer Loop: 3 minutes countdown
     tournamentTimerJob = viewModelScope.launch {
       while (_tournamentState.value.isActive && _tournamentState.value.remainingSeconds > 0) {
         delay(1000)
@@ -1155,39 +1416,59 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   private var pvpTimerJob: Job? = null
   private var coopTimerJob: Job? = null
 
-  fun startPvpMatch(opponentName: String = "Rival Marino") {
-    val cleanRival = opponentName.trim().ifEmpty { "Rival Celular 2" }
+  fun initiatePvpHandshake(username: String) {
+    pendingGameStartMode = "PVP"
+    val myName = username.trim().ifBlank { "Jugador 1" }
+    _pvpState.update { it.copy(
+      myUsername = myName,
+      isReady = true,
+      opponentReady = false
+    ) }
+    multiplayerManager.sendMessage(MultiplayerMessage.PlayerReady(myName))
+    checkStartConditions("PVP")
+
+    // Fallback: if opponent doesn't respond in 1.5s, auto-start with AI rival so user never gets stuck
+    viewModelScope.launch {
+      delay(1500)
+      val current = _pvpState.value
+      if (!current.isMatchActive && current.isReady && !current.opponentReady) {
+        _pvpState.update { it.copy(opponentUsername = "Capitán Rival (IA)", opponentReady = true) }
+        realStartPvp()
+      }
+    }
+  }
+
+  private fun checkStartConditions(mode: String) {
+    if (mode == "PVP") {
+      val state = _pvpState.value
+      if (state.isReady && state.opponentReady && !state.isMatchActive) {
+        realStartPvp()
+      }
+    } else if (mode == "COOP") {
+      val state = _coopState.value
+      if (state.isReady && state.partnerReady && !state.isMissionActive) {
+        realStartCoop()
+      }
+    }
+  }
+
+  private fun realStartPvp() {
     pvpTimerJob?.cancel()
-    _pvpState.value = PvpState(
-      isMatchActive = true,
-      myScore = 0,
-      myFishesCaught = 0,
-      myCombo = 0,
-      opponentUsername = cleanRival,
-      opponentScore = 0,
-      opponentFishes = 0,
-      opponentCombo = 0,
-      iAmAlive = true,
-      opponentAlive = true,
-      remainingSeconds = 360, // 6:00 min duel
-      isFinished = false,
-      winnerMessage = null,
-      mySabotagesAvailable = 2
-    )
+    _pvpState.update { it.copy(isMatchActive = true, remainingSeconds = 180, iAmAlive = true, opponentAlive = true) }
+    
+    // El host sincroniza el inicio oficial
+    val isHost = (multiplayerState.value as? MultiplayerState.Connected)?.isHost == true
+    if (isHost) {
+      multiplayerManager.sendMessage(MultiplayerMessage.MatchStart("PVP", Random.nextLong()))
+    }
 
-    // Notify rival of duel start
-    multiplayerManager.sendMessage(
-      MultiplayerMessage.CoopAction("DUEL_START", 360, _tournamentState.value.username.ifEmpty { "P1" })
-    )
-
-    // PvP Match Countdown
     pvpTimerJob = viewModelScope.launch {
       while (_pvpState.value.isMatchActive && _pvpState.value.remainingSeconds > 0) {
         delay(1000)
         _pvpState.update { state ->
           val next = state.remainingSeconds - 1
           if (next <= 0 || (!state.iAmAlive && !state.opponentAlive)) {
-            state.copy(remainingSeconds = max(0, next), isMatchActive = false, isFinished = true, winnerMessage = if (!state.iAmAlive && !state.opponentAlive) "¡Doble eliminación! Fin prematuro del duelo." else state.winnerMessage)
+            state.copy(remainingSeconds = max(0, next), isMatchActive = false, isFinished = true)
           } else {
             state.copy(remainingSeconds = next)
           }
@@ -1195,8 +1476,6 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       }
       finishPvpMatch()
     }
-
-    // Spawn first duel fish
     spawnNextFishInMatch()
   }
 
@@ -1209,14 +1488,30 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     val winMsg = state.winnerMessage ?: defaultWinMsg
     _pvpState.update { it.copy(isMatchActive = false, isFinished = true, winnerMessage = winMsg) }
 
+    // Enviar resultados finales al otro dispositivo para sincronización de tablas
+    multiplayerManager.sendMessage(MultiplayerMessage.FinalMatchResults(state.myUsername, state.myScore, state.myFishesCaught, "Duelo 1v1"))
+
     viewModelScope.launch {
       if (state.myScore > 0 || state.myFishesCaught > 0) {
         repository.recordFairTournamentRun(
-          username = _tournamentState.value.username.ifEmpty { "Jugador 1v1" },
+          username = state.myUsername,
           score = state.myScore,
           fishesCaught = state.myFishesCaught,
           bestFishName = "Duelo vs ${state.opponentUsername}",
           maxCombo = state.myCombo,
+          durationSeconds = 360 - state.remainingSeconds,
+          gameMode = "PVP"
+        )
+      }
+      
+      // Registrar también el resultado del oponente si lo tenemos sincronizado
+      if (state.opponentScore > 0 || state.opponentFishes > 0) {
+        repository.recordFairTournamentRun(
+          username = state.opponentUsername,
+          score = state.opponentScore,
+          fishesCaught = state.opponentFishes,
+          bestFishName = "Duelo vs ${state.myUsername}",
+          maxCombo = state.opponentCombo,
           durationSeconds = 360 - state.remainingSeconds,
           gameMode = "PVP"
         )
@@ -1259,23 +1554,36 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   // ================= COOPERATIVE DUO MULTIPLAYER =================
-  fun startCoopMatch() {
-    coopTimerJob?.cancel()
-    _coopState.value = _coopState.value.copy(
-      isMissionActive = true,
-      teamScore = 0,
-      teamFishesCaught = 0,
-      sharedHullPercent = 100,
-      partnerAlive = true,
-      iAmAlive = true,
-      remainingSeconds = 360, // 6:00 min Co-op
-      isFinished = false,
-      recentTeamEvent = "¡Misión Cooperativa iniciada! Protejan el sumergible."
-    )
+  fun initiateCoopHandshake(username: String) {
+    pendingGameStartMode = "COOP"
+    val myName = username.trim().ifBlank { "Jugador Dúo" }
+    _coopState.update { it.copy(
+      myUsername = myName,
+      isReady = true,
+      partnerReady = false
+    ) }
+    multiplayerManager.sendMessage(MultiplayerMessage.PlayerReady(myName))
+    checkStartConditions("COOP")
 
-    multiplayerManager.sendMessage(
-      MultiplayerMessage.CoopAction("COOP_START", 360, _coopState.value.assignedRole)
-    )
+    // Fallback: if partner doesn't respond in 1.5s, auto-start with AI partner so user never gets stuck
+    viewModelScope.launch {
+      delay(1500)
+      val current = _coopState.value
+      if (!current.isMissionActive && current.isReady && !current.partnerReady) {
+        _coopState.update { it.copy(partnerUsername = "Compañero Marino (IA)", partnerReady = true) }
+        realStartCoop()
+      }
+    }
+  }
+
+  private fun realStartCoop() {
+    coopTimerJob?.cancel()
+    _coopState.update { it.copy(isMissionActive = true, remainingSeconds = 180, iAmAlive = true, partnerAlive = true, partnerHullPercent = 100) }
+    
+    val isHost = (multiplayerState.value as? MultiplayerState.Connected)?.isHost == true
+    if (isHost) {
+      multiplayerManager.sendMessage(MultiplayerMessage.MatchStart("COOP", Random.nextLong()))
+    }
 
     coopTimerJob = viewModelScope.launch {
       while (_coopState.value.isMissionActive && _coopState.value.remainingSeconds > 0) {
@@ -1283,7 +1591,7 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
         _coopState.update { state ->
           val next = state.remainingSeconds - 1
           if (next <= 0 || (!state.iAmAlive && !state.partnerAlive)) {
-            state.copy(remainingSeconds = max(0, next), isMissionActive = false, isFinished = true, recentTeamEvent = if (!state.iAmAlive && !state.partnerAlive) "¡Ambos jugadores eliminados! Misión fallida." else state.recentTeamEvent)
+            state.copy(remainingSeconds = max(0, next), isMissionActive = false, isFinished = true)
           } else {
             state.copy(remainingSeconds = next)
           }
@@ -1291,24 +1599,24 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       }
       finishCoopMatch()
     }
-
-    // Spawn first co-op creature
     spawnNextFishInMatch()
   }
 
   fun finishCoopMatch() {
     coopTimerJob?.cancel()
     val state = _coopState.value
-    _coopState.update { it.copy(isMissionActive = false, isFinished = true, recentTeamEvent = "¡Misión Cooperativa completada con éxito!") }
+    _coopState.update { it.copy(isMissionActive = false, isFinished = true) }
+
+    multiplayerManager.sendMessage(MultiplayerMessage.FinalMatchResults("Equipo: ${state.myUsername}", state.teamScore, state.teamFishesCaught, "Misión Cooperativa"))
 
     viewModelScope.launch {
       if (state.teamScore > 0 || state.teamFishesCaught > 0) {
         repository.recordFairTournamentRun(
-          username = _tournamentState.value.username.ifEmpty { "Equipo Dúo" },
+          username = "Dúo: ${state.myUsername} & ${state.partnerUsername}",
           score = state.teamScore,
           fishesCaught = state.teamFishesCaught,
-          bestFishName = "Misión Dúo",
-          maxCombo = 4,
+          bestFishName = "Misión Cooperativa",
+          maxCombo = 1,
           durationSeconds = 360 - state.remainingSeconds,
           gameMode = "COOP"
         )
@@ -1318,19 +1626,24 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
 
   fun spawnNextFishInMatch() {
     val availableFish = MarineDatabase.speciesList
-    val randomFish = availableFish.random()
+    val randomFish = availableFish[matchRandom.nextInt(availableFish.size)]
     
     val isCoop = _coopState.value.isMissionActive
     val isPvp = _pvpState.value.isMatchActive
     
-    if (isCoop || isPvp) {
+    if (isCoop) {
       val isHost = (multiplayerState.value as? MultiplayerState.Connected)?.isHost == true
       if (isHost) {
         val initialHeading = (Random.nextFloat() * 40f - 20f + (_gameState.value?.playerHeading ?: 0f) + 360f) % 360f
         multiplayerManager.sendMessage(MultiplayerMessage.SpawnFish(randomFish.id, initialHeading, 22f))
         startEncounter(randomFish, forceHeading = initialHeading)
+      } else {
+        // Enviar solicitud al host para que spawnee el siguiente pez
+        multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("REQUEST_NEXT_FISH", 0))
+        _coopState.update { it.copy(recentTeamEvent = "Solicitando siguiente objetivo al host...") }
       }
     } else {
+      // PvP o Solo: Spawns independientes o locales
       startEncounter(randomFish)
     }
   }
@@ -1357,9 +1670,10 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
         multiplayerManager.sendMessage(MultiplayerMessage.CoopAction("DEPLOY_NET", 100))
       }
       "REPAIR_HULL" -> {
-        val maxHull = _gameState.value?.maxHullIntegrityPercent ?: 200
-        val newHull = min(maxHull, _coopState.value.sharedHullPercent + 25)
-        _coopState.update { it.copy(sharedHullPercent = newHull, recentTeamEvent = "¡Casco reparado +25%!") }
+        val maxHull = _gameState.value?.maxHullIntegrityPercent ?: 100
+        val currentHull = _gameState.value?.hullIntegrityPercent ?: 100
+        val newHull = min(maxHull, currentHull + 25)
+        _coopState.update { it.copy(recentTeamEvent = "¡Casco reparado +25%!") }
         _gameState.update { it?.copy(hullIntegrityPercent = newHull) }
         multiplayerManager.sendMessage(MultiplayerMessage.CoopHullUpdate(newHull))
       }
@@ -1370,12 +1684,12 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
     when (actionType) {
       "DUEL_START" -> {
         if (!_pvpState.value.isMatchActive) {
-          startPvpMatch(extra.ifEmpty { "Rival Celular 1" })
+          initiatePvpHandshake(extra.ifEmpty { "Rival Celular 1" })
         }
       }
       "COOP_START" -> {
         if (!_coopState.value.isMissionActive) {
-          startCoopMatch()
+          initiateCoopHandshake("Compañero Marino")
         }
       }
       "ROLE_SELECTED" -> {
@@ -1399,6 +1713,12 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
       }
       "REPAIR_HULL" -> {
         _coopState.update { it.copy(recentTeamEvent = "¡Tu compañero activó escudo de reparación!") }
+      }
+      "REQUEST_NEXT_FISH" -> {
+        val isHost = (multiplayerState.value as? MultiplayerState.Connected)?.isHost == true
+        if (isHost) {
+          spawnNextFishInMatch()
+        }
       }
       "SPAWN_FISH" -> {
         val initialHeading = value.toFloat()
@@ -1465,6 +1785,12 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
         _unlockedSpeciesIds.update { it + caught.id }
         viewModelScope.launch {
             repository.saveSetting("unlocked_species", _unlockedSpeciesIds.value.joinToString(","))
+            
+            // Update Mission Progress
+            updateMissionProgress("m1", 1) // Incrementar captura de peces
+            if (!wasDamagedInCurrentEncounter) {
+                updateMissionProgress("m3", 1) // Incrementar encuentros sin ser visto
+            }
         }
         val gainedCoins = caught.energyRequired * 3
         addPescacoins(gainedCoins)
@@ -1504,18 +1830,6 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
             )
           }
 
-          // Persist automatically in ScoreRepository upon winning competition encounter
-          viewModelScope.launch {
-            scoreRepository.saveScore(
-              username = tState.username.trim().ifBlank { "Pescador_Feria" },
-              score = newScore,
-              captures = newFishes,
-              bestSpecies = bestFish,
-              maxCombo = maxC,
-              durationSeconds = 360 - tState.remainingSeconds
-            )
-          }
-
           multiplayerManager.sendMessage(
             MultiplayerMessage.ScoreUpdate(
               username = tState.username,
@@ -1541,21 +1855,9 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
             )
           }
 
-          // Persist automatically in ScoreRepository for 1v1 PvP duel competition
-          viewModelScope.launch {
-            scoreRepository.saveScore(
-              username = "Duelo PvP (P1)",
-              score = newScore,
-              captures = newFishes,
-              bestSpecies = caught.commonName,
-              maxCombo = combo,
-              durationSeconds = 180 - pvp.remainingSeconds
-            )
-          }
-
           multiplayerManager.sendMessage(
             MultiplayerMessage.ScoreUpdate(
-              username = "Rival P1",
+              username = pvp.myUsername,
               score = newScore,
               fishesCaught = newFishes,
               combo = combo
@@ -1573,17 +1875,6 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
               teamScore = newScore,
               teamFishesCaught = newFishes,
               recentTeamEvent = "¡Captura Dúo de ${caught.commonName}! +$addedScore pts"
-            )
-          }
-
-          viewModelScope.launch {
-            scoreRepository.saveScore(
-              username = "Equipo Dúo",
-              score = newScore,
-              captures = newFishes,
-              bestSpecies = caught.commonName,
-              maxCombo = 1,
-              durationSeconds = 240 - coop.remainingSeconds
             )
           }
 
@@ -1611,6 +1902,29 @@ class MarineGameViewModel(application: Application) : AndroidViewModel(applicati
           it?.copy(phase = phase.copy(progress = newProg))
         }
       }
+    }
+  }
+
+  fun claimMission(missionId: String) {
+    val mission = _allMissions.value.find { it.id == missionId } ?: return
+    if (mission.isCompleted && !mission.isClaimed) {
+      addPescacoins(mission.reward)
+      MarineSoundEngine.playSuccessChime()
+      viewModelScope.launch {
+        repository.claimMission(missionId)
+      }
+    }
+  }
+
+  fun updateMissionProgress(missionId: String, delta: Int) {
+    val mission = _allMissions.value.find { it.id == missionId } ?: return
+    if (mission.isCompleted) return
+    
+    val newProgress = min(mission.target, mission.progress + delta)
+    val isCompleted = newProgress >= mission.target
+    
+    viewModelScope.launch {
+      repository.updateMissionProgress(missionId, newProgress, isCompleted)
     }
   }
 

@@ -16,3 +16,18 @@ data class UserSettingEntity(
     @PrimaryKey val key: String,
     val value: String
 )
+
+@Entity(tableName = "inventory_items")
+data class InventoryEntity(
+    @PrimaryKey val id: String,
+    val count: Int
+)
+
+@Entity(tableName = "missions")
+data class MissionEntity(
+    @PrimaryKey val id: String,
+    val progress: Int,
+    val target: Int,
+    val isCompleted: Boolean,
+    val isClaimed: Boolean
+)

@@ -115,6 +115,15 @@ fun GameModesScreen(
     }
   }
 
+  val pvpState by marineViewModel.pvpState.collectAsState()
+  val coopState by marineViewModel.coopState.collectAsState()
+
+  androidx.compose.runtime.LaunchedEffect(pvpState.isMatchActive, coopState.isMissionActive) {
+    if (pvpState.isMatchActive || coopState.isMissionActive) {
+      onStartEncounter()
+    }
+  }
+
   Column(modifier.fillMaxSize().background(OceanDeep)) {
     Row(
       Modifier.fillMaxWidth().background(OceanAbyss).padding(14.dp),
@@ -155,8 +164,8 @@ fun GameModesScreen(
 
     when (selectedMode) {
       FairMode.COMPETITIVE -> CompetitivePanel(tournamentViewModel, onShowUsername = { showUsername = true }, onLeaderboard = { showLeaderboard = true })
-      FairMode.DUEL -> DuelPanel(multiplayer, peerState, peerScore, peerCaptures, peerCombo, sabotageText, onStartEncounter, selectedPeer, onPeerSelected = { selectedPeer = it }, onConnect = { it?.let(multiplayer::connect) }, onListen = { multiplayer.startListening() }, onSabotage = { text -> multiplayer.send(MarinePeerMessage("SABOTAGE", 5, text)) })
-      FairMode.COOP -> CooperativePanel(multiplayer, peerState, onStartEncounter, onListen = { multiplayer.startListening() }, onConnect = { selectedPeer?.let(multiplayer::connect) }, onRoleChange = { role -> multiplayer.send(MarinePeerMessage("ROLE", 0, role)) })
+      FairMode.DUEL -> DuelPanel(multiplayer, peerState, peerScore, peerCaptures, peerCombo, sabotageText, onStartEncounter = { showUsername = true }, selectedPeer, onPeerSelected = { selectedPeer = it }, onConnect = { it?.let(multiplayer::connect) }, onListen = { multiplayer.startListening() }, onSabotage = { text -> multiplayer.send(MarinePeerMessage("SABOTAGE", 5, text)) })
+      FairMode.COOP -> CooperativePanel(multiplayer, peerState, onStartEncounter = { showUsername = true }, onListen = { multiplayer.startListening() }, onConnect = { selectedPeer?.let(multiplayer::connect) }, onRoleChange = { role -> multiplayer.send(MarinePeerMessage("ROLE", 0, role)) })
       FairMode.SOLO -> SoloPanel(onStartEncounter)
     }
   }
@@ -166,15 +175,37 @@ fun GameModesScreen(
   if (showUsername) {
     AlertDialog(
       onDismissRequest = { showUsername = false },
-      title = { Text("Identificación del torneo") },
+      title = { Text(if (selectedMode == FairMode.COMPETITIVE) "Identificación del torneo" else "Preparar conexión táctica") },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          Text("El Username se guarda junto al puntaje oficial local.", color = TextSecondary, fontSize = 12.sp)
+          Text(if (selectedMode == FairMode.COMPETITIVE) "El Username se guarda junto al puntaje oficial local." else "Ingresa tu nombre para que el otro jugador te identifique.", color = TextSecondary, fontSize = 12.sp)
           TextField(value = usernameDraft, onValueChange = { usernameDraft = it.take(18) }, singleLine = true, label = { Text("Username / apodo") })
+          
+          if (selectedMode == FairMode.DUEL || selectedMode == FairMode.COOP) {
+            val waiting = (selectedMode == FairMode.DUEL && pvpState.isReady && !pvpState.opponentReady) ||
+                          (selectedMode == FairMode.COOP && coopState.isReady && !coopState.partnerReady)
+            if (waiting) {
+              Spacer(Modifier.height(8.dp))
+              Text("ESPERANDO A QUE EL OTRO JUGADOR SE IDENTIFIQUE...", color = MarineGold, fontWeight = FontWeight.Black, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+          }
         }
       },
       confirmButton = {
-        Button(onClick = { tournamentViewModel.start(usernameDraft); showUsername = false; onStartEncounter() }, enabled = usernameDraft.trim().isNotEmpty()) { Text("INICIAR 6:00") }
+        val waiting = (selectedMode == FairMode.DUEL && pvpState.isReady) || (selectedMode == FairMode.COOP && coopState.isReady)
+        Button(
+          onClick = { 
+            when (selectedMode) {
+              FairMode.COMPETITIVE -> { tournamentViewModel.start(usernameDraft); showUsername = false; onStartEncounter() }
+              FairMode.DUEL -> marineViewModel.initiatePvpHandshake(usernameDraft)
+              FairMode.COOP -> marineViewModel.initiateCoopHandshake(usernameDraft)
+              else -> Unit
+            }
+          }, 
+          enabled = usernameDraft.trim().isNotEmpty() && !waiting
+        ) { 
+          Text(if (selectedMode == FairMode.COMPETITIVE) "INICIAR 6:00" else "LISTO PARA DESCENDER") 
+        }
       },
       dismissButton = { TextButton(onClick = { showUsername = false }) { Text("Cancelar") } }
     )

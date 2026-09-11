@@ -193,7 +193,7 @@ fun ArEncounterScreen(
         }
       }
 
-      // Battery, Hull Integrity & Sonar Interference Bar
+      // Battery, Hull Integrity (3 Lives/Helmets) & Sonar Interference Bar
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -221,19 +221,28 @@ fun ArEncounterScreen(
           )
         }
 
-        // Hull integrity
+        // 3-Life System (Helmets/Cascos)
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Icon(
-            imageVector = Icons.Default.Security,
-            contentDescription = null,
-            tint = if (gameState.hullIntegrityPercent > 40) MarineCyan else Color.Red,
-            modifier = Modifier.size(15.dp)
-          )
-          Spacer(modifier = Modifier.width(4.dp))
+          val lives = when {
+            gameState.hullIntegrityPercent > 67 -> 3
+            gameState.hullIntegrityPercent > 33 -> 2
+            gameState.hullIntegrityPercent > 0 -> 1
+            else -> 0
+          }
+          repeat(3) { i ->
+            Icon(
+              imageVector = Icons.Default.Security,
+              contentDescription = "Vida ${i+1}",
+              tint = if (i < lives) MarineCyan else Color.Gray.copy(alpha = 0.3f),
+              modifier = Modifier.size(18.dp)
+            )
+            if (i < 2) Spacer(modifier = Modifier.width(3.dp))
+          }
+          Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = "CASCO: ${gameState.hullIntegrityPercent}%",
-            color = if (gameState.hullIntegrityPercent > 40) MarineCyan else Color.Red,
-            fontWeight = FontWeight.ExtraBold,
+            text = "CASCO",
+            color = if (lives > 1) MarineCyan else Color.Red,
+            fontWeight = FontWeight.Black,
             fontSize = 11.sp
           )
         }
@@ -285,7 +294,38 @@ fun ArEncounterScreen(
             fontSize = 11.5.sp
           )
         }
-      } else if (pvpState.opponentScore > 0 || pvpState.opponentFishes > 0) {
+      } else if (pvpState.isMatchActive) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(OceanAbyss.copy(alpha = 0.92f))
+            .border(1.dp, Color(0xFFFF5252), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column(Modifier.weight(1f)) {
+            Text(text = "YO: ${pvpState.myScore} pts", color = MarineCyan, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+            Text(text = pvpState.myUsername, color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 11.sp)
+          }
+          
+          val min = pvpState.remainingSeconds / 60
+          val sec = pvpState.remainingSeconds % 60
+          Text(
+            text = String.format(java.util.Locale.getDefault(), "%02d:%02d", min, sec),
+            color = Color(0xFFFF5252),
+            fontWeight = FontWeight.Black,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 8.dp)
+          )
+
+          Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+            Text(text = "RIVAL: ${pvpState.opponentScore} pts", color = MarineGold, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+            Text(text = pvpState.opponentUsername, color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 11.sp)
+          }
+        }
+      } else if (coopState.isMissionActive) {
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -296,42 +336,107 @@ fun ArEncounterScreen(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
+          Column {
+            Text(text = "EQUIPO DUO", color = MarineCyan, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+            Text(text = "Puntaje: ${coopState.teamScore}", color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 12.sp)
+          }
+          
+          val min = coopState.remainingSeconds / 60
+          val sec = coopState.remainingSeconds % 60
           Text(
-            text = "⚔️ VS ${pvpState.opponentUsername}",
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.5.sp
-          )
-          Text(
-            text = "Rival: ${pvpState.opponentScore} pts",
-            color = MarineCyan,
+            text = String.format(java.util.Locale.getDefault(), "⏱️ %02d:%02d", min, sec),
+            color = MarineGold,
             fontWeight = FontWeight.Black,
-            fontSize = 11.5.sp
+            fontSize = 12.sp
           )
+
+          Column(horizontalAlignment = Alignment.End) {
+            Text(text = "SOCIO: ${coopState.partnerUsername}", color = TextSecondary, fontSize = 10.sp)
+            Text(text = if (coopState.partnerAlive) "CONECTADO" else "ELIMINADO", color = if (coopState.partnerAlive) MarineGreen else Color.Red, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+          }
         }
-      } else if (coopState.teamScore > 0 || coopState.teamFishesCaught > 0) {
+      }
+
+      // Partner Status Row (Multiplayer)
+      if (coopState.isMissionActive) {
         Row(
           modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(OceanAbyss.copy(alpha = 0.92f))
-            .border(1.dp, MarineGreen, RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .background(OceanAbyss.copy(alpha = 0.7f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = "🤝 Equipo: ${coopState.teamScore} pts",
-            color = MarineGreen,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.5.sp
-          )
-          Text(
-            text = "Capturas Dúo: ${coopState.teamFishesCaught}",
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.5.sp
-          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (coopState.iAmAlive) MarineGreen else Color.Red))
+            Spacer(Modifier.width(6.dp))
+            Text(
+              text = "TÚ (${coopState.myUsername})",
+              color = if (coopState.iAmAlive) MarineGreen else Color.Gray,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            )
+          }
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = "${coopState.partnerUsername}: ",
+              color = if (coopState.partnerAlive) MarineCyan else Color.Gray,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            )
+            val partnerLives = when {
+                coopState.partnerHullPercent > 67 -> 3
+                coopState.partnerHullPercent > 33 -> 2
+                coopState.partnerHullPercent > 0 -> 1
+                else -> 0
+            }
+            repeat(3) { i ->
+                Icon(
+                    Icons.Default.Security, null, 
+                    tint = if (i < partnerLives) MarineCyan else Color.Gray.copy(alpha = 0.4f),
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            if (!coopState.partnerAlive) {
+                Spacer(Modifier.width(4.dp))
+                Text("ELIMINADO", color = Color.Red, fontSize = 9.sp, fontWeight = FontWeight.Black)
+            }
+          }
+        }
+      } else if (pvpState.isMatchActive) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(OceanAbyss.copy(alpha = 0.7f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (pvpState.iAmAlive) MarineCyan else Color.Red))
+            Spacer(Modifier.width(6.dp))
+            Text(
+              text = "TÚ (${pvpState.myUsername})",
+              color = if (pvpState.iAmAlive) MarineCyan else Color.Gray,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            )
+          }
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = "RIVAL (${pvpState.opponentUsername}): ",
+              color = if (pvpState.opponentAlive) Color(0xFFFF7043) else Color.Gray,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold
+            )
+            if (pvpState.opponentAlive) {
+                Text("${pvpState.opponentScore} pts", color = MarineGold, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            } else {
+                Text("ELIMINADO", color = Color.Red, fontSize = 9.sp, fontWeight = FontWeight.Black)
+            }
+          }
         }
       }
     }

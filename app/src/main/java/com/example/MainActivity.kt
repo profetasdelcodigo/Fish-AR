@@ -86,9 +86,31 @@ fun PescActivateApp(viewModel: MarineGameViewModel = viewModel()) {
 
   LaunchedEffect(Unit) {
     val neededPermissions = mutableListOf<String>()
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(Manifest.permission.CAMERA)
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-    if (neededPermissions.isNotEmpty()) permissionsLauncher.launch(neededPermissions.toTypedArray())
+    
+    // Core Permissions
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+      neededPermissions.add(Manifest.permission.CAMERA)
+    }
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+      neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    // Bluetooth Permissions (Android 12+)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+        neededPermissions.add(Manifest.permission.BLUETOOTH_SCAN)
+      }
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+        neededPermissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+      }
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+        neededPermissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+      }
+    }
+
+    if (neededPermissions.isNotEmpty()) {
+      permissionsLauncher.launch(neededPermissions.toTypedArray())
+    }
   }
 
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->

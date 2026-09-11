@@ -56,105 +56,28 @@ class MarineRepository(private val marineDao: MarineDao) {
     }
 
     suspend fun seedInitialLeaderboardIfEmpty() {
-        if (marineDao.getLeaderboardCount() == 0) {
-            val now = System.currentTimeMillis()
-            val seedEntries = listOf(
-                FairLeaderboardEntity(
-                    username = "Don Lucho (Cevichería El Mero)",
-                    score = 3450,
-                    captures = 12,
-                    bestSpecies = "Mero Murike Gigante",
-                    maxCombo = 5,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 20
-                ),
-                FairLeaderboardEntity(
-                    username = "Capitán Peralta (Máncora)",
-                    score = 2890,
-                    captures = 9,
-                    bestSpecies = "Pez Espada",
-                    maxCombo = 4,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 16
-                ),
-                FairLeaderboardEntity(
-                    username = "Pescadora Rosa (El Ñuro)",
-                    score = 2420,
-                    captures = 8,
-                    bestSpecies = "Bonito del Norte",
-                    maxCombo = 3,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 12
-                ),
-                FairLeaderboardEntity(
-                    username = "Mateo_Piura",
-                    score = 1980,
-                    captures = 7,
-                    bestSpecies = "Corvina Dorada",
-                    maxCombo = 3,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 8
-                ),
-                FairLeaderboardEntity(
-                    username = "Marino_Talara",
-                    score = 1750,
-                    captures = 6,
-                    bestSpecies = "Jurel Fino",
-                    maxCombo = 2,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 6
-                ),
-                FairLeaderboardEntity(
-                    username = "Sra. Elena (Paita)",
-                    score = 1520,
-                    captures = 5,
-                    bestSpecies = "Cachema Plateada",
-                    maxCombo = 2,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 4
-                ),
-                FairLeaderboardEntity(
-                    username = "Buceador Carlos",
-                    score = 1340,
-                    captures = 5,
-                    bestSpecies = "Caballa Norteña",
-                    maxCombo = 2,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 3
-                ),
-                FairLeaderboardEntity(
-                    username = "Lucas_Surf",
-                    score = 1180,
-                    captures = 4,
-                    bestSpecies = "Lenguado Costero",
-                    maxCombo = 1,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000 * 2
-                ),
-                FairLeaderboardEntity(
-                    username = "Pescador_Colán",
-                    score = 950,
-                    captures = 3,
-                    bestSpecies = "Lisa de Bahía",
-                    maxCombo = 1,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 3600000
-                ),
-                FairLeaderboardEntity(
-                    username = "Novato_Costero",
-                    score = 720,
-                    captures = 2,
-                    bestSpecies = "Pintadilla",
-                    maxCombo = 1,
-                    durationSeconds = 360,
-                    createdAtEpochMs = now - 1800000
-                )
-            )
-            marineDao.insertLeaderboardEntries(seedEntries)
-        }
+        // Tabla de records inicia completamente vacía y se llena solo con partidas terminadas
     }
 
     suspend fun clearLeaderboard() {
         marineDao.clearFairLeaderboard()
     }
+
+    // Inventory
+    fun getAllInventoryItems(): Flow<List<InventoryEntity>> = marineDao.getAllInventoryItems()
+    suspend fun saveInventoryItem(id: String, count: Int) = marineDao.insertInventoryItem(InventoryEntity(id, count))
+    suspend fun updateInventoryItemCount(id: String, delta: Int) = marineDao.updateInventoryItemCount(id, delta)
+
+    // Missions
+    fun getAllMissions(): Flow<List<MissionEntity>> = marineDao.getAllMissions()
+    suspend fun saveMission(id: String, progress: Int, target: Int, isCompleted: Boolean, isClaimed: Boolean) = 
+        marineDao.insertMission(MissionEntity(id, progress, target, isCompleted, isClaimed))
+    suspend fun updateMissionProgress(id: String, progress: Int, isCompleted: Boolean) = 
+        marineDao.updateMissionProgress(id, progress, isCompleted)
+    suspend fun claimMission(id: String) = marineDao.claimMission(id)
+
+    // Upgrades
+    fun getAllUpgrades(): Flow<List<UpgradeEntity>> = marineDao.getAllUpgrades()
+    suspend fun saveUpgrade(id: String, level: Int) = marineDao.insertUpgrade(UpgradeEntity(id, level))
+    suspend fun updateUpgradeLevel(id: String, level: Int) = marineDao.updateUpgradeLevel(id, level)
 }

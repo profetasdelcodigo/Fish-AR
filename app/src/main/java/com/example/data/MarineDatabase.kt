@@ -6,8 +6,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [CaughtFishEntity::class, UserSettingEntity::class, FairLeaderboardEntity::class],
-    version = 3,
+    entities = [
+        CaughtFishEntity::class, 
+        UserSettingEntity::class, 
+        FairLeaderboardEntity::class,
+        InventoryEntity::class,
+        MissionEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class MarineDatabase : RoomDatabase() {

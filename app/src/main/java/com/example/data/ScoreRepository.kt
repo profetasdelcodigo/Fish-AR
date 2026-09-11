@@ -26,7 +26,8 @@ class ScoreRepository(
         captures: Int = 1,
         bestSpecies: String = "Especie Marina",
         maxCombo: Int = 1,
-        durationSeconds: Int = 360
+        durationSeconds: Int = 360,
+        gameMode: String = "FAIR"
     ): Long {
         val entry = FairLeaderboardEntity(
             username = username.trim().ifBlank { "Pescador_Competencia" },
@@ -35,6 +36,7 @@ class ScoreRepository(
             bestSpecies = bestSpecies,
             maxCombo = maxCombo,
             durationSeconds = durationSeconds,
+            gameMode = gameMode,
             createdAtEpochMs = System.currentTimeMillis()
         )
         return insertScore(entry)

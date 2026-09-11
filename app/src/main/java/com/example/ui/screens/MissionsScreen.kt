@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.audio.MarineSoundEngine
 import com.example.game.MarineGameViewModel
+import com.example.game.MissionState
 import com.example.ui.theme.MarineCyan
 import com.example.ui.theme.MarineGold
 import com.example.ui.theme.MarineGreen
@@ -65,35 +66,14 @@ import com.example.ui.theme.OceanDeep
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
-data class MarineMission(
-  val id: String,
-  val title: String,
-  val progress: Int,
-  val target: Int,
-  val reward: Int,
-  val icon: ImageVector,
-  val isCompleted: Boolean = false,
-  val isClaimed: Boolean = false
-)
-
 @Composable
 fun MissionsScreen(
   viewModel: MarineGameViewModel,
   modifier: Modifier = Modifier
 ) {
   val pescacoins by viewModel.pescacoins.collectAsState()
+  val missionsList by viewModel.allMissions.collectAsState()
   var activeTab by remember { mutableStateOf("Activas") }
-
-  var missionsList by remember {
-    mutableStateOf(
-      listOf(
-        MarineMission("m1", "Captura 5 peces raros", 3, 5, 100, Icons.Default.Shield),
-        MarineMission("m2", "Explora 3 zonas marinas", 2, 3, 150, Icons.Default.Explore),
-        MarineMission("m3", "Completa 1 encuentro sin ser visto", 1, 1, 200, Icons.Default.VisibilityOff, isCompleted = true),
-        MarineMission("m4", "Participa en la Feria San Josefina", 1, 1, 250, Icons.Default.Public, isCompleted = true)
-      )
-    )
-  }
 
   Column(
     modifier = modifier
@@ -209,11 +189,7 @@ fun MissionsScreen(
               if (mission.isCompleted && !mission.isClaimed) {
                 Button(
                   onClick = {
-                    viewModel.addPescacoins(mission.reward)
-                    MarineSoundEngine.playSuccessChime()
-                    missionsList = missionsList.map {
-                      if (it.id == mission.id) it.copy(isClaimed = true) else it
-                    }
+                    viewModel.claimMission(mission.id)
                   },
                   colors = ButtonDefaults.buttonColors(containerColor = MarineGold, contentColor = OceanDeep),
                   shape = RoundedCornerShape(10.dp),

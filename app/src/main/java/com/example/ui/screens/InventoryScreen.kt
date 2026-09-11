@@ -25,7 +25,6 @@ import com.example.audio.MarineSoundEngine
 import com.example.game.MarineGameViewModel
 import com.example.ui.theme.*
 
-data class InventoryItem(val id: String, val name: String, val description: String, val count: Int, val icon: ImageVector, val iconColor: Color)
 data class UpgradeItem(val id: String, val name: String, val level: Int, val effect: String, val cost: Int, val icon: ImageVector)
 
 @Composable
@@ -35,6 +34,7 @@ fun InventoryScreen(
   onOpenLab: () -> Unit = {}
 ) {
   val pescacoins by viewModel.pescacoins.collectAsState()
+  val dbInventory by viewModel.allInventory.collectAsState()
   var activeTab by remember { mutableStateOf("Objetos") }
   var upgradesList by remember {
     mutableStateOf(
@@ -44,17 +44,6 @@ fun InventoryScreen(
         UpgradeItem("u_bat", "Batería extra", 1, "+50% de duración en expediciones AR.", 100, Icons.Default.BatteryChargingFull),
         UpgradeItem("u_bait", "Cebo especial avanzado", 1, "Atrae especies raras con más frecuencia.", 150, Icons.Default.VolunteerActivism)
       )
-    )
-  }
-
-  val objectsList = remember {
-    listOf(
-      InventoryItem("flashlight", "Linterna Marina UV", "Revela peces en la oscuridad marina.", 5, Icons.Default.FlashlightOn, MarineCyan),
-      InventoryItem("shield", "Escudo Súper Pez", "Te protege de embestidas de arrecife.", 3, Icons.Default.Security, MarineGold),
-      InventoryItem("bait", "Cebo Artesanal Marino", "Atrae especies raras de profundidad.", 8, Icons.Default.VolunteerActivism, MarineCoral),
-      InventoryItem("battery", "Célula de Batería de Casco", "Recarga tus dispositivos y escáner.", 12, Icons.Default.BatteryChargingFull, MarineGreen),
-      InventoryItem("lightning", "Rayo Eléctrico", "Aturde al pez durante la ventana de captura.", 4, Icons.Default.ElectricBolt, MarineCyan),
-      InventoryItem("medal", "Medalla de Captura", "Úsala en eventos especiales de la feria.", 6, Icons.Default.MilitaryTech, MarineGold)
     )
   }
 
@@ -100,12 +89,39 @@ fun InventoryScreen(
 
     when (activeTab) {
       "Objetos" -> LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(objectsList) { item ->
-          Card(colors = CardDefaults.cardColors(containerColor = OceanCard), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, item.iconColor.copy(alpha = .3f)), modifier = Modifier.fillMaxWidth()) {
+        items(dbInventory) { item ->
+          val icon = when(item.id) {
+            "flashlight" -> Icons.Default.FlashlightOn
+            "shield" -> Icons.Default.Security
+            "bait" -> Icons.Default.VolunteerActivism
+            "battery" -> Icons.Default.BatteryChargingFull
+            "lightning" -> Icons.Default.ElectricBolt
+            "medal" -> Icons.Default.MilitaryTech
+            else -> Icons.Default.Inventory
+          }
+          val description = when(item.id) {
+            "flashlight" -> "Revela peces en la oscuridad marina."
+            "shield" -> "Te protege de embestidas de arrecife."
+            "bait" -> "Atrae especies raras de profundidad."
+            "battery" -> "Recarga tus dispositivos y escáner."
+            "lightning" -> "Aturde al pez durante la ventana de captura."
+            "medal" -> "Úsala en eventos especiales de la feria."
+            else -> "Objeto recolectado."
+          }
+          val iconColor = when(item.id) {
+            "flashlight" -> MarineCyan
+            "shield" -> MarineGold
+            "bait" -> MarineCoral
+            "battery" -> MarineGreen
+            "lightning" -> MarineCyan
+            "medal" -> MarineGold
+            else -> MarineCyan
+          }
+          Card(colors = CardDefaults.cardColors(containerColor = OceanCard), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, iconColor.copy(alpha = .3f)), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-              Box(Modifier.size(44.dp).clip(CircleShape).background(item.iconColor.copy(alpha = .15f)).border(1.2.dp, item.iconColor.copy(alpha = .5f), CircleShape), contentAlignment = Alignment.Center) { Icon(item.icon, item.name, tint = item.iconColor, modifier = Modifier.size(24.dp)) }
+              Box(Modifier.size(44.dp).clip(CircleShape).background(iconColor.copy(alpha = .15f)).border(1.2.dp, iconColor.copy(alpha = .5f), CircleShape), contentAlignment = Alignment.Center) { Icon(icon, item.name, tint = iconColor, modifier = Modifier.size(24.dp)) }
               Spacer(Modifier.width(14.dp))
-              Column(Modifier.weight(1f)) { Text(item.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp); Text(item.description, color = TextSecondary, fontSize = 11.sp, maxLines = 2) }
+              Column(Modifier.weight(1f)) { Text(item.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp); Text(description, color = TextSecondary, fontSize = 11.sp, maxLines = 2) }
               Text("x${item.count}", color = TextSecondary, fontWeight = FontWeight.Black, fontSize = 14.sp)
             }
           }

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -67,16 +68,16 @@ private data class StoreItem(val id: String, val name: String, val description: 
 @Composable
 fun MoreFeaturesScreen(
   viewModel: MarineGameViewModel,
-  isNightMode: Boolean,
-  onToggleNightMode: () -> Unit,
-  modifier: Modifier = Modifier
+  modifier: Modifier = Modifier,
+  onNavigate: (String) -> Unit = {}
 ) {
   var page by remember { mutableStateOf(FeaturePage.HUB) }
   val pescacoins by viewModel.pescacoins.collectAsState()
   val unlocked by viewModel.unlockedSpeciesIds.collectAsState()
   val location by viewModel.realLocation.collectAsState()
-  var ownedItems by remember { mutableStateOf(setOf<String>()) }
-  var socialSharing by remember { mutableStateOf(false) }
+  val ownedItems by viewModel.ownedStoreItems.collectAsState()
+  val socialSharing by viewModel.socialSharingEnabled.collectAsState()
+  val isNightMode by viewModel.nightModeEnabled.collectAsState()
 
   val storeItems = remember {
     listOf(
@@ -98,8 +99,10 @@ fun MoreFeaturesScreen(
         pescacoins = pescacoins,
         speciesCount = unlocked.size,
         isNightMode = isNightMode,
-        onToggleNightMode = onToggleNightMode,
-        onOpen = { page = it }
+        onToggleNightMode = { viewModel.toggleNightMode() },
+        onResetWelcome = { viewModel.resetWelcome() },
+        onOpen = { page = it },
+        onNavigate = onNavigate
       )
       FeaturePage.CAMERA -> CameraExplorationScreen(onBack = { page = FeaturePage.HUB })
       FeaturePage.WEATHER -> WeatherScreen(
@@ -111,7 +114,7 @@ fun MoreFeaturesScreen(
       FeaturePage.SOCIAL -> SocialRadarScreen(
         viewModel = viewModel,
         sharing = socialSharing,
-        onToggleSharing = { socialSharing = !socialSharing },
+        onToggleSharing = { viewModel.toggleSocialSharing() },
         onBack = { page = FeaturePage.HUB }
       )
       FeaturePage.LEAGUE -> FishLeagueScreen(
@@ -123,12 +126,7 @@ fun MoreFeaturesScreen(
         items = storeItems,
         ownedItems = ownedItems,
         pescacoins = pescacoins,
-        onBuy = { item ->
-          if (item.id !in ownedItems && pescacoins >= item.cost) {
-            viewModel.addPescacoins(-item.cost)
-            ownedItems = ownedItems + item.id
-          }
-        },
+        onBuy = { item -> viewModel.buyStoreItem(item.id, item.cost) },
         onBack = { page = FeaturePage.HUB }
       )
     }
@@ -141,7 +139,9 @@ private fun FeatureHub(
   speciesCount: Int,
   isNightMode: Boolean,
   onToggleNightMode: () -> Unit,
-  onOpen: (FeaturePage) -> Unit
+  onResetWelcome: () -> Unit,
+  onOpen: (FeaturePage) -> Unit,
+  onNavigate: (String) -> Unit = {}
 ) {
   val cards = listOf(
     Triple(FeaturePage.CAMERA, "Cámara AR", Icons.Default.CameraAlt),
@@ -149,6 +149,11 @@ private fun FeatureHub(
     Triple(FeaturePage.SOCIAL, "Mapa social", Icons.Default.Groups),
     Triple(FeaturePage.LEAGUE, "Fish League", Icons.Default.Leaderboard),
     Triple(FeaturePage.STORE, "Tienda", Icons.Default.Storefront)
+  )
+
+  val navigationCards = listOf(
+    Triple("Ecosistemas", "Zonas marinas de Piura", Icons.Default.Waves),
+    Triple("Laboratorio", "Equipamiento abisal", Icons.Default.Tune)
   )
 
   Column(Modifier.fillMaxSize().padding(18.dp)) {
@@ -176,6 +181,9 @@ private fun FeatureHub(
       items(cards) { (page, title, icon) ->
         FeatureCard(page, title, icon, onOpen)
       }
+      items(navigationCards) { (title, subtitle, icon) ->
+        FeatureNavCard(title, subtitle, icon, onNavigate)
+      }
       item {
         Row(
           Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(OceanCard.copy(alpha = .45f)).border(1.dp, MarineGold.copy(alpha = .35f), RoundedCornerShape(20.dp)).padding(14.dp),
@@ -190,6 +198,23 @@ private fun FeatureHub(
             Text("Reduce luminancia y prioriza la información crítica durante expediciones nocturnas.", color = TextSecondary, fontSize = 11.sp)
           }
           Switch(checked = isNightMode, onCheckedChange = { onToggleNightMode() }, colors = SwitchDefaults.colors(checkedThumbColor = OceanDeep, checkedTrackColor = MarineGold))
+        }
+      }
+      item {
+        Spacer(Modifier.height(10.dp))
+        Column(
+          Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF421212).copy(alpha = .35f)).border(1.dp, Color(0xFFE53935).copy(alpha = .45f), RoundedCornerShape(20.dp)).padding(14.dp)
+        ) {
+          Text("ZONA DE RIESGO", color = Color(0xFFFF5252), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
+          Spacer(Modifier.height(6.dp))
+          Button(
+            onClick = { onResetWelcome() },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935).copy(alpha = .2f), contentColor = Color(0xFFFF8A80)),
+            modifier = Modifier.fillMaxWidth().height(40.dp),
+            shape = RoundedCornerShape(12.dp)
+          ) {
+            Text("REINICIAR TUTORIAL INICIAL", fontWeight = FontWeight.Black, fontSize = 11.sp)
+          }
         }
       }
     }
@@ -223,6 +248,24 @@ private fun FeatureCard(page: FeaturePage, title: String, icon: androidx.compose
       Text(page.subtitle, color = TextSecondary, fontSize = 11.sp)
     }
     Text("ABRIR", color = MarineCyan, fontWeight = FontWeight.Black, fontSize = 9.sp)
+  }
+}
+
+@Composable
+private fun FeatureNavCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onNavigate: (String) -> Unit) {
+  Row(
+    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(OceanCard.copy(alpha = .68f)).border(1.dp, MarineCyan.copy(alpha = .18f), RoundedCornerShape(20.dp)).clickable { onNavigate(title.uppercase()) }.padding(14.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MarineCyan.copy(alpha = .09f)).border(1.dp, MarineCyan.copy(alpha = .38f), RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
+      Icon(icon, null, tint = MarineCyan, modifier = Modifier.size(24.dp))
+    }
+    Spacer(Modifier.width(12.dp))
+    Column(Modifier.weight(1f)) {
+      Text(title, color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 14.sp)
+      Text(subtitle, color = TextSecondary, fontSize = 11.sp)
+    }
+    Text("IR", color = MarineCyan, fontWeight = FontWeight.Black, fontSize = 9.sp)
   }
 }
 

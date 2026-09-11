@@ -40,4 +40,27 @@ interface MarineDao {
 
     @Query("DELETE FROM fair_leaderboard WHERE gameMode = :mode")
     suspend fun clearFairLeaderboard(mode: String = "FAIR")
+
+    // Inventory
+    @Query("SELECT * FROM inventory_items")
+    fun getAllInventoryItems(): Flow<List<InventoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryItem(item: InventoryEntity)
+
+    @Query("UPDATE inventory_items SET count = count + :delta WHERE id = :id")
+    suspend fun updateInventoryItemCount(id: String, delta: Int)
+
+    // Missions
+    @Query("SELECT * FROM missions")
+    fun getAllMissions(): Flow<List<MissionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMission(mission: MissionEntity)
+
+    @Query("UPDATE missions SET progress = :progress, isCompleted = :isCompleted WHERE id = :id")
+    suspend fun updateMissionProgress(id: String, progress: Int, isCompleted: Boolean)
+
+    @Query("UPDATE missions SET isClaimed = 1 WHERE id = :id")
+    suspend fun claimMission(id: String)
 }

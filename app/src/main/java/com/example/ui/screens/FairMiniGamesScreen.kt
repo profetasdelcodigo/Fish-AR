@@ -39,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -421,12 +422,10 @@ fun FairMiniGamesScreen(
             when (viewModel.pendingGameStartMode) {
               "FAIR" -> viewModel.startFairTournament(inputUsername)
               "COOP" -> {
-                viewModel.startFairTournament(inputUsername) // to set username
-                viewModel.startCoopMatch()
+                viewModel.initiateCoopHandshake(inputUsername)
               }
               "PVP" -> {
-                viewModel.startFairTournament(inputUsername) // to set username
-                viewModel.startPvpMatch()
+                viewModel.initiatePvpHandshake(inputUsername)
               }
             }
           },
@@ -754,6 +753,23 @@ private fun PvpTabContent(onOpenUsernameDialog: () -> Unit,
                 }
               }
             }
+          } else if (pvpState.isReady && !pvpState.opponentReady) {
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(OceanAbyss)
+                .border(1.5.dp, MarineGold, RoundedCornerShape(14.dp))
+                .padding(24.dp),
+              contentAlignment = Alignment.Center
+            ) {
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = MarineGold, modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("ESPERANDO AL RIVAL...", color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                Text("Tu compañero de duelo debe ingresar su nombre para iniciar.", color = TextSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
+              }
+            }
           } else {
             Button(
               onClick = onOpenUsernameDialog,
@@ -934,8 +950,8 @@ private fun CoopTabContent(onOpenUsernameDialog: () -> Unit,
                   horizontalArrangement = Arrangement.SpaceBetween,
                   verticalAlignment = Alignment.CenterVertically
                 ) {
-                  Text("🛡️ Casco Compartido", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                  Text("${coopState.sharedHullPercent}%", color = if (coopState.sharedHullPercent > 50) MarineGreen else Color(0xFFFF5252), fontWeight = FontWeight.Black, fontSize = 14.sp)
+                  Text("🛡️ Casco Compañero", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                  Text("${coopState.partnerHullPercent}%", color = if (coopState.partnerHullPercent > 50) MarineGreen else Color(0xFFFF5252), fontWeight = FontWeight.Black, fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
@@ -985,6 +1001,23 @@ private fun CoopTabContent(onOpenUsernameDialog: () -> Unit,
                 ) {
                   Text("NUEVA MISIÓN COOPERATIVA", fontWeight = FontWeight.Black)
                 }
+              }
+            }
+          } else if (coopState.isReady && !coopState.partnerReady) {
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(OceanAbyss)
+                .border(1.5.dp, MarineGreen, RoundedCornerShape(14.dp))
+                .padding(24.dp),
+              contentAlignment = Alignment.Center
+            ) {
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = MarineGreen, modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("ESPERANDO AL COMPAÑERO...", color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                Text("Tu pareja de pesca debe ingresar su nombre para sincronizar el sumergible.", color = TextSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
               }
             }
           } else {
